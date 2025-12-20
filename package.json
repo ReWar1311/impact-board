@@ -1,0 +1,68 @@
+{
+  "name": "impact-board",
+  "version": "1.0.0",
+  "description": "A public GitHub App that tracks and motivates organization contributions with leaderboards, streaks, ranks, and awards",
+  "main": "dist/app.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "format": "prettier --write src/**/*.ts",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "migrate": "ts-node src/storage/migrations/run.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "github",
+    "github-app",
+    "contribution",
+    "leaderboard",
+    "motivation",
+    "organization",
+    "stats"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@octokit/auth-app": "^6.0.0",
+    "@octokit/graphql": "^7.0.0",
+    "@octokit/rest": "^20.0.0",
+    "@octokit/webhooks": "^12.0.0",
+    "dotenv": "^16.3.0",
+    "express": "^4.18.0",
+    "express-rate-limit": "^7.1.0",
+    "helmet": "^7.1.0",
+    "js-yaml": "^4.1.0",
+    "pg": "^8.11.0",
+    "pino": "^8.16.0",
+    "pino-pretty": "^10.2.0",
+    "uuid": "^9.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.0",
+    "@types/jest": "^29.5.0",
+    "@types/js-yaml": "^4.0.0",
+    "@types/node": "^20.9.0",
+    "@types/pg": "^8.10.0",
+    "@types/uuid": "^9.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.10.0",
+    "@typescript-eslint/parser": "^6.10.0",
+    "eslint": "^8.53.0",
+    "eslint-config-prettier": "^9.0.0",
+    "eslint-plugin-prettier": "^5.0.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.1.0",
+    "ts-jest": "^29.1.0",
+    "ts-node": "^10.9.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
