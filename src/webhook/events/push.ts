@@ -68,13 +68,13 @@ export async function handlePushEvent(
   for (const commit of event.commits) {
     // Skip if commit author doesn't have a GitHub username
     if (!commit.author.username) {
-      logger.debug({ processingId, sha: commit.sha }, 'Skipping commit without GitHub username');
+      logger.debug({ processingId, sha: commit.id }, 'Skipping commit without GitHub username');
       continue;
     }
 
     // Apply anti-gaming filters
     if (!antiGaming.isValidCommit(commit)) {
-      logger.debug({ processingId, sha: commit.sha }, 'Commit filtered by anti-gaming rules');
+      logger.debug({ processingId, sha: commit.id }, 'Commit filtered by anti-gaming rules');
       continue;
     }
 
@@ -83,18 +83,18 @@ export async function handlePushEvent(
       installationId,
       orgLogin,
       repoName,
-      commit.sha
+      commit.id
     );
 
     if (!details) {
-      logger.warn({ processingId, sha: commit.sha }, 'Failed to get commit details');
+      logger.warn({ processingId, sha: commit.id }, 'Failed to get commit details');
       continue;
     }
 
     // Check minimum lines
     const totalLines = details.additions + details.deletions;
     if (!antiGaming.meetsMinimumLines(totalLines)) {
-      logger.debug({ processingId, sha: commit.sha, totalLines }, 'Commit below minimum lines threshold');
+      logger.debug({ processingId, sha: commit.id, totalLines }, 'Commit below minimum lines threshold');
       continue;
     }
 

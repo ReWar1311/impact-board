@@ -91,6 +91,7 @@ export async function getUser(
     const { data } = await octokit.users.getByUsername({ username });
     
     logGitHubApi('GET', `/users/${username}`, installationId, Date.now() - startTime);
+  
     
     return {
       id: data.id,

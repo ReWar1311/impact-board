@@ -15,6 +15,10 @@ import { repository } from './storage/repository';
 
 const app = express();
 
+// Trust proxy for Railway/reverse proxy deployments
+// This is required for express-rate-limit to work correctly
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet({
   contentSecurityPolicy: {
@@ -80,11 +84,19 @@ app.post(
   '/webhook',
   webhookLimiter,
   express.raw({ type: 'application/json', limit: '10mb' }),
+  (req: Request & { rawBody?: Buffer }, res: Response, next: NextFunction) => {
+    // Store the raw body for signature verification
+    req.rawBody = req.body as Buffer;
+    next();
+  },
   webhookSignatureMiddleware,
   (req: Request, res: Response, next: NextFunction) => {
     // Parse the raw body after signature verification
     try {
-      req.body = JSON.parse(req.body.toString());
+      const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+      if (rawBody) {
+        req.body = JSON.parse(rawBody.toString());
+      }
       next();
     } catch (error) {
       res.status(400).json({ error: 'Invalid JSON payload' });

@@ -109,8 +109,17 @@ const gitHubRepoSchema = z.object({
   default_branch: z.string(),
 });
 
+// Simpler repo schema for installation webhooks (GitHub sends less data)
+const gitHubRepoSimpleSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  full_name: z.string(),
+  private: z.boolean(),
+  node_id: z.string().optional(),
+});
+
 const gitHubCommitSchema = z.object({
-  sha: z.string(),
+  id: z.string(),  // GitHub uses 'id' not 'sha' in webhook payloads
   message: z.string(),
   author: z.object({
     name: z.string(),
@@ -121,6 +130,15 @@ const gitHubCommitSchema = z.object({
   added: z.array(z.string()),
   removed: z.array(z.string()),
   modified: z.array(z.string()),
+  tree_id: z.string().optional(),
+  distinct: z.boolean().optional(),
+  url: z.string().optional(),
+});
+
+// Simple installation reference in webhook payloads
+const installationRefSchema = z.object({
+  id: z.number(),
+  node_id: z.string().optional(),
 });
 
 export const pushWebhookSchema = z.object({
@@ -136,12 +154,7 @@ export const pushWebhookSchema = z.object({
   sender: gitHubUserSchema,
   repository: gitHubRepoSchema,
   organization: gitHubOrgSchema.optional(),
-  installation: z
-    .object({
-      id: z.number(),
-      account: gitHubOrgSchema.or(gitHubUserSchema),
-    })
-    .optional(),
+  installation: installationRefSchema.optional(),
 });
 
 export const pullRequestWebhookSchema = z.object({
@@ -162,12 +175,7 @@ export const pullRequestWebhookSchema = z.object({
   sender: gitHubUserSchema,
   repository: gitHubRepoSchema,
   organization: gitHubOrgSchema.optional(),
-  installation: z
-    .object({
-      id: z.number(),
-      account: gitHubOrgSchema.or(gitHubUserSchema),
-    })
-    .optional(),
+  installation: installationRefSchema.optional(),
 });
 
 export const issuesWebhookSchema = z.object({
@@ -184,12 +192,7 @@ export const issuesWebhookSchema = z.object({
   sender: gitHubUserSchema,
   repository: gitHubRepoSchema,
   organization: gitHubOrgSchema.optional(),
-  installation: z
-    .object({
-      id: z.number(),
-      account: gitHubOrgSchema.or(gitHubUserSchema),
-    })
-    .optional(),
+  installation: installationRefSchema.optional(),
 });
 
 export const installationWebhookSchema = z.object({
@@ -204,7 +207,7 @@ export const installationWebhookSchema = z.object({
     created_at: z.string(),
     updated_at: z.string(),
   }),
-  repositories: z.array(gitHubRepoSchema).optional(),
+  repositories: z.array(gitHubRepoSimpleSchema).optional(),
   sender: gitHubUserSchema,
 });
 

@@ -29,7 +29,7 @@ export interface GitHubRepository {
 }
 
 export interface GitHubCommit {
-  sha: string;
+  id: string;  // GitHub uses 'id' not 'sha' in webhook payloads
   message: string;
   author: {
     name: string;
@@ -40,6 +40,9 @@ export interface GitHubCommit {
   added: string[];
   removed: string[];
   modified: string[];
+  tree_id?: string;
+  distinct?: boolean;
+  url?: string;
 }
 
 export interface GitHubPullRequest {

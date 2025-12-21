@@ -134,7 +134,7 @@ services:
     environment:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=pass
-      - POSTGRES_DB=contributions
+      - POSTGRES_DB=impact-board
 
 volumes:
   pgdata:
