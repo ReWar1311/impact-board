@@ -6,6 +6,7 @@ import { config } from './config/env';
 import { webhookSignatureMiddleware } from './webhook/verifySignature';
 import { handleWebhook } from './webhook/handler';
 import { repository } from './storage/repository';
+import { readmePublisher } from './readme/publisher';
 
 /**
  * HTTP Server
@@ -310,6 +311,110 @@ app.post('/privacy/opt-out', express.json(), async (req: Request, res: Response,
     );
 
     res.status(200).json({ status: 'updated' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Rate limiter for README update endpoint (stricter to prevent abuse)
+const readmeUpdateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 10, // 10 requests per hour per org
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many README update requests. Please wait before trying again.' },
+  keyGenerator: (req) => req.params.orgLogin || req.ip || 'unknown',
+});
+
+/**
+ * Manual README Update Endpoint
+ * 
+ * Allows organizations to trigger a README update on-demand
+ * instead of waiting for the scheduled update.
+ * 
+ * POST /api/readme/update/:orgLogin
+ * 
+ * Optional body:
+ * - apiKey: string (for authentication if configured)
+ */
+app.post('/api/readme/update/:orgLogin', readmeUpdateLimiter, express.json(), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { orgLogin } = req.params;
+
+    if (!orgLogin) {
+      res.status(400).json({ error: 'Missing organization login' });
+      return;
+    }
+
+    // Look up the installation by org login
+    const installation = await repository.installations.getByLogin(orgLogin);
+
+    if (!installation) {
+      res.status(404).json({ error: 'Organization not found. Make sure the app is installed.' });
+      return;
+    }
+
+    // Check if README updates are enabled for this installation
+    if (!installation.settings.enableReadmeUpdates) {
+      res.status(403).json({ error: 'README updates are disabled for this organization.' });
+      return;
+    }
+
+    logger.info({ orgLogin }, 'Manual README update triggered');
+
+    // Trigger the README update
+    const success = await readmePublisher.updateReadme(
+      installation.installationId,
+      orgLogin
+    );
+
+    if (success) {
+      res.status(200).json({
+        status: 'success',
+        message: `README updated successfully for ${orgLogin}`,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      res.status(500).json({
+        status: 'failed',
+        message: 'Failed to update README. Check logs for details.',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  } catch (error) {
+    logger.error({ error, orgLogin: req.params.orgLogin }, 'Manual README update failed');
+    next(error);
+  }
+});
+
+/**
+ * Get README update status for an organization
+ * 
+ * GET /api/readme/status/:orgLogin
+ */
+app.get('/api/readme/status/:orgLogin', publicLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { orgLogin } = req.params;
+
+    if (!orgLogin) {
+      res.status(400).json({ error: 'Missing organization login' });
+      return;
+    }
+
+    const installation = await repository.installations.getByLogin(orgLogin);
+
+    if (!installation) {
+      res.status(404).json({ error: 'Organization not found' });
+      return;
+    }
+
+    res.status(200).json({
+      orgLogin,
+      installationId: installation.installationId,
+      readmeUpdatesEnabled: installation.settings.enableReadmeUpdates,
+      updateSchedule: installation.settings.readmeUpdateSchedule || 'hourly',
+      lastUpdated: installation.updatedAt,
+    });
   } catch (error) {
     next(error);
   }
