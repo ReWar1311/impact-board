@@ -79,6 +79,13 @@ class StatsCollector {
       const user = await getUser(contribution.installationId, contribution.userLogin);
       if (user) {
         userId = user.id;
+        // Save user to database
+        await repository.users.upsert({
+          userId: user.id,
+          login: user.login,
+          avatarUrl: user.avatar_url,
+          type: user.type,
+        });
       } else {
         logger.warn({ userLogin: contribution.userLogin }, 'Could not resolve user ID');
         return;

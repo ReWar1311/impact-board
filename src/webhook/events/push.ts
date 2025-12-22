@@ -4,6 +4,7 @@ import type { PushWebhookPayload, GitHubCommit } from '../../types';
 import { collector } from '../../stats/collector';
 import { antiGaming } from '../../stats/antiGaming';
 import { getCommitDetails } from '../../github/client';
+import { repository } from '../../storage/repository';
 import { COMMIT_PATTERNS } from '../../config/constants';
 
 /**
@@ -55,8 +56,13 @@ export async function handlePushEvent(
     commitsCount: event.commits.length,
   }, 'Processing push event');
 
-  // Skip if pushing to non-default branch (optional, based on config)
-  // For now, we'll process all branches
+  // Store sender user info
+  await repository.users.upsert({
+    userId: event.sender.id,
+    login: event.sender.login,
+    avatarUrl: event.sender.avatar_url,
+    type: event.sender.type,
+  });
 
   // Filter and process commits
   const validCommits: Array<{

@@ -4,6 +4,7 @@ import type { PullRequestWebhookPayload } from '../../types';
 import { collector } from '../../stats/collector';
 import { antiGaming } from '../../stats/antiGaming';
 import { getPullRequestDetails } from '../../github/client';
+import { repository } from '../../storage/repository';
 
 /**
  * Pull Request Event Handler
@@ -66,6 +67,14 @@ export async function handlePullRequestEvent(
     prNumber: event.number,
     prAuthor: pr.user.login,
   }, 'Processing merged pull request');
+
+  // Store PR author user info
+  await repository.users.upsert({
+    userId: pr.user.id,
+    login: pr.user.login,
+    avatarUrl: pr.user.avatar_url,
+    type: pr.user.type,
+  });
 
   // Check if PR author is a bot
   if (antiGaming.isBotUser(pr.user.login, pr.user.type)) {

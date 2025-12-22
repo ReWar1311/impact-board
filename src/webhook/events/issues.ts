@@ -3,6 +3,7 @@ import { issuesWebhookSchema } from '../../types/schemas';
 import type { IssuesWebhookPayload } from '../../types';
 import { collector } from '../../stats/collector';
 import { antiGaming } from '../../stats/antiGaming';
+import { repository } from '../../storage/repository';
 
 /**
  * Issues Event Handler
@@ -62,6 +63,14 @@ export async function handleIssuesEvent(
   }, 'Processing issue event');
 
   if (event.action === 'opened') {
+    // Store issue author user info
+    await repository.users.upsert({
+      userId: issue.user.id,
+      login: issue.user.login,
+      avatarUrl: issue.user.avatar_url,
+      type: issue.user.type,
+    });
+
     // Check if issue author is a bot
     if (antiGaming.isBotUser(issue.user.login, issue.user.type)) {
       logger.debug({ processingId, username: issue.user.login }, 'Skipping issue from bot user');
@@ -91,6 +100,14 @@ export async function handleIssuesEvent(
     // Determine who closed the issue
     // Priority: closed_by > sender (if they have permission)
     const closer = issue.closed_by ?? event.sender;
+
+    // Store closer user info
+    await repository.users.upsert({
+      userId: closer.id,
+      login: closer.login,
+      avatarUrl: closer.avatar_url,
+      type: closer.type,
+    });
 
     // Check if closer is a bot
     if (antiGaming.isBotUser(closer.login, closer.type)) {
