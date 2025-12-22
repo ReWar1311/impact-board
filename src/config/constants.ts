@@ -6,7 +6,7 @@
 // Application Info
 // ============================================================================
 
-export const APP_NAME = 'org-contribution-motivation';
+export const APP_NAME = 'ImpactBoard';
 export const APP_VERSION = '1.0.0';
 export const APP_DESCRIPTION = 'A GitHub App that tracks and motivates organization contributions';
 
@@ -36,7 +36,7 @@ export const SUPPORTED_WEBHOOK_EVENTS = [
 
 export const PROFILE_REPO_NAME = '.github';
 export const PROFILE_README_PATH = 'profile/README.md';
-export const CONFIG_FILE_NAME = '.org-motivation.yml';
+export const CONFIG_FILE_NAME = '.impact-board.yml';
 
 // ImpactBoard (new system) YAML location inside the profile repo
 // File location is fixed and non-configurable per documentation
@@ -51,18 +51,18 @@ export const README_TARGET_PATH = 'profile/README.md';
 // ============================================================================
 
 export const README_MARKERS = {
-  LEADERBOARD_START: '<!-- ORG-MOTIVATION:LEADERBOARD:START -->',
-  LEADERBOARD_END: '<!-- ORG-MOTIVATION:LEADERBOARD:END -->',
-  STREAKS_START: '<!-- ORG-MOTIVATION:STREAKS:START -->',
-  STREAKS_END: '<!-- ORG-MOTIVATION:STREAKS:END -->',
-  AWARDS_START: '<!-- ORG-MOTIVATION:AWARDS:START -->',
-  AWARDS_END: '<!-- ORG-MOTIVATION:AWARDS:END -->',
-  SUMMARY_START: '<!-- ORG-MOTIVATION:SUMMARY:START -->',
-  SUMMARY_END: '<!-- ORG-MOTIVATION:SUMMARY:END -->',
-  HEATMAP_START: '<!-- ORG-MOTIVATION:HEATMAP:START -->',
-  HEATMAP_END: '<!-- ORG-MOTIVATION:HEATMAP:END -->',
-  TIMESTAMP_START: '<!-- ORG-MOTIVATION:TIMESTAMP:START -->',
-  TIMESTAMP_END: '<!-- ORG-MOTIVATION:TIMESTAMP:END -->',
+  LEADERBOARD_START: '<!-- IMPACT-BOARD:LEADERBOARD:START -->',
+  LEADERBOARD_END: '<!-- IMPACT-BOARD:LEADERBOARD:END -->',
+  STREAKS_START: '<!-- IMPACT-BOARD:STREAKS:START -->',
+  STREAKS_END: '<!-- IMPACT-BOARD:STREAKS:END -->',
+  AWARDS_START: '<!-- IMPACT-BOARD:AWARDS:START -->',
+  AWARDS_END: '<!-- IMPACT-BOARD:AWARDS:END -->',
+  SUMMARY_START: '<!-- IMPACT-BOARD:SUMMARY:START -->',
+  SUMMARY_END: '<!-- IMPACT-BOARD:SUMMARY:END -->',
+  HEATMAP_START: '<!-- IMPACT-BOARD:HEATMAP:START -->',
+  HEATMAP_END: '<!-- IMPACT-BOARD:HEATMAP:END -->',
+  TIMESTAMP_START: '<!-- IMPACT-BOARD:TIMESTAMP:START -->',
+  TIMESTAMP_END: '<!-- IMPACT-BOARD:TIMESTAMP:END -->',
 } as const;
 
 // ============================================================================

@@ -284,7 +284,7 @@ ${sections.heatmap}
 
 ${sections.timestamp}
 
-*Powered by [Org Contribution Motivation](https://github.com/apps/org-contribution-motivation) - A GitHub App that motivates and celebrates contributors.*
+*Powered by [Impact Board](https://github.com/apps/impact-board) - A GitHub App that motivates and celebrates contributors.*
 `;
 }
 

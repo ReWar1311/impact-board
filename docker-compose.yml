@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: contribution-motivation-app
+    container_name: impact-board-app
     restart: unless-stopped
     ports:
       - "${PORT:-3000}:3000"
@@ -31,7 +31,7 @@ services:
 
   db:
     image: postgres:15-alpine
-    container_name: contribution-motivation-db
+    container_name: impact-board-db
     restart: unless-stopped
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -51,7 +51,7 @@ services:
   # Optional: Nginx reverse proxy for production
   nginx:
     image: nginx:alpine
-    container_name: contribution-motivation-nginx
+    container_name: impact-board-nginx
     restart: unless-stopped
     ports:
       - "80:80"

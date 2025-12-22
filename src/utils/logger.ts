@@ -20,7 +20,7 @@ export const logger = pino({
       }
     : undefined,
   base: {
-    service: 'org-contribution-motivation',
+    service: 'impact-board',
     version: process.env.npm_package_version ?? '1.0.0',
   },
   formatters: {

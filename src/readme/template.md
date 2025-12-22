@@ -2,44 +2,44 @@
 
 Welcome to our organization! Here's a summary of our community's contributions.
 
-<!-- ORG-MOTIVATION:SUMMARY:START -->
+<!-- IMPACT-BOARD:SUMMARY:START -->
 <!-- Summary will be auto-generated -->
-<!-- ORG-MOTIVATION:SUMMARY:END -->
+<!-- IMPACT-BOARD:SUMMARY:END -->
 
 ## 🏆 Leaderboard
 
 Our top contributors this month:
 
-<!-- ORG-MOTIVATION:LEADERBOARD:START -->
+<!-- IMPACT-BOARD:LEADERBOARD:START -->
 <!-- Leaderboard will be auto-generated -->
-<!-- ORG-MOTIVATION:LEADERBOARD:END -->
+<!-- IMPACT-BOARD:LEADERBOARD:END -->
 
 ## 🔥 Contribution Streaks
 
 Current active streaks:
 
-<!-- ORG-MOTIVATION:STREAKS:START -->
+<!-- IMPACT-BOARD:STREAKS:START -->
 <!-- Streaks will be auto-generated -->
-<!-- ORG-MOTIVATION:STREAKS:END -->
+<!-- IMPACT-BOARD:STREAKS:END -->
 
 ## 🏅 Monthly Awards
 
 Recognition for outstanding contributions:
 
-<!-- ORG-MOTIVATION:AWARDS:START -->
+<!-- IMPACT-BOARD:AWARDS:START -->
 <!-- Awards will be auto-generated -->
-<!-- ORG-MOTIVATION:AWARDS:END -->
+<!-- IMPACT-BOARD:AWARDS:END -->
 
 ## 📊 Activity Heatmap
 
-<!-- ORG-MOTIVATION:HEATMAP:START -->
+<!-- IMPACT-BOARD:HEATMAP:START -->
 <!-- Heatmap will be auto-generated -->
-<!-- ORG-MOTIVATION:HEATMAP:END -->
+<!-- IMPACT-BOARD:HEATMAP:END -->
 
 ---
 
-<!-- ORG-MOTIVATION:TIMESTAMP:START -->
+<!-- IMPACT-BOARD:TIMESTAMP:START -->
 <!-- Timestamp will be auto-generated -->
-<!-- ORG-MOTIVATION:TIMESTAMP:END -->
+<!-- IMPACT-BOARD:TIMESTAMP:END -->
 
 *Powered by [Impact Board](https://github.com/apps/impact-board) - A GitHub App that motivates and celebrates contributors.*

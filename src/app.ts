@@ -8,7 +8,7 @@ import { scheduleReadmeUpdates } from './readme/publisher';
 /**
  * Application Entry Point
  * 
- * Bootstraps the GitHub Contribution Motivation App
+ * Bootstraps the Impact Board App
  */
 
 // Graceful shutdown handler
@@ -48,7 +48,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 async function main(): Promise<void> {
-  logger.info('Starting GitHub Contribution Motivation App...');
+  logger.info('Starting Impact Board App...');
   logger.info({
     nodeEnv: config.NODE_ENV,
     appId: config.GITHUB_APP_ID,
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
       logger.info({ port: config.PORT }, 'HTTP server started');
       logger.info(`Webhook endpoint: http://localhost:${config.PORT}/webhook`);
       logger.info(`Health check: http://localhost:${config.PORT}/health`);
-      logger.info('GitHub Contribution Motivation App is ready!');
+      logger.info('Impact Board App is ready!');
     });
 
     // Configure server timeouts

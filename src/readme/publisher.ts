@@ -60,26 +60,26 @@ class ReadmePublisher {
   private getDefaultTemplate(): string {
     return `# Organization Contribution Stats
 
-<!-- ORG-MOTIVATION:SUMMARY:START -->
-<!-- ORG-MOTIVATION:SUMMARY:END -->
+<!-- IMPACT-BOARD:SUMMARY:START -->
+<!-- IMPACT-BOARD:SUMMARY:END -->
 
 ## 🏆 Leaderboard
 
-<!-- ORG-MOTIVATION:LEADERBOARD:START -->
-<!-- ORG-MOTIVATION:LEADERBOARD:END -->
+<!-- IMPACT-BOARD:LEADERBOARD:START -->
+<!-- IMPACT-BOARD:LEADERBOARD:END -->
 
 ## 🔥 Streaks
 
-<!-- ORG-MOTIVATION:STREAKS:START -->
-<!-- ORG-MOTIVATION:STREAKS:END -->
+<!-- IMPACT-BOARD:STREAKS:START -->
+<!-- IMPACT-BOARD:STREAKS:END -->
 
 ## 🏅 Awards
 
-<!-- ORG-MOTIVATION:AWARDS:START -->
-<!-- ORG-MOTIVATION:AWARDS:END -->
+<!-- IMPACT-BOARD:AWARDS:START -->
+<!-- IMPACT-BOARD:AWARDS:END -->
 
-<!-- ORG-MOTIVATION:TIMESTAMP:START -->
-<!-- ORG-MOTIVATION:TIMESTAMP:END -->
+<!-- IMPACT-BOARD:TIMESTAMP:START -->
+<!-- IMPACT-BOARD:TIMESTAMP:END -->
 `;
   }
 
@@ -415,7 +415,7 @@ class ReadmePublisher {
    */
   private contentEquals(existing: string, updated: string): boolean {
     // Remove timestamp sections for comparison
-    const timestampRegex = /<!-- ORG-MOTIVATION:TIMESTAMP:START -->[\s\S]*?<!-- ORG-MOTIVATION:TIMESTAMP:END -->/g;
+    const timestampRegex = /<!-- IMPACT-BOARD:TIMESTAMP:START -->[\s\S]*?<!-- IMPACT-BOARD:TIMESTAMP:END -->/g;
     const existingNormalized = existing.replace(timestampRegex, '').trim();
     const updatedNormalized = updated.replace(timestampRegex, '').trim();
 

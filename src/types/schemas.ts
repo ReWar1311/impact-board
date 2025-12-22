@@ -31,7 +31,7 @@ export const envSchema = z.object({
 export type EnvConfig = z.infer<typeof envSchema>;
 
 // ============================================================================
-// Organization Config File Schema (.org-motivation.yml)
+// Organization Config File Schema (.impact-board.yml)
 // ============================================================================
 
 export const orgConfigSchema = z.object({

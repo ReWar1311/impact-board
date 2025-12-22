@@ -1,7 +1,7 @@
 /**
  * Database Schema
  * 
- * PostgreSQL schema for the contribution motivation app
+ * PostgreSQL schema for Impact Board app
  * Stores aggregated data, not raw events
  */
 

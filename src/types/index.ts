@@ -1,5 +1,5 @@
 /**
- * Core type definitions for the Org Contribution Motivation GitHub App
+ * Core type definitions for the Impact Board GitHub App
  */
 
 // ============================================================================

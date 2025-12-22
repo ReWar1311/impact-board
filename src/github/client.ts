@@ -222,7 +222,7 @@ export async function updateProfileReadme(
       owner: orgLogin,
       repo: PROFILE_REPO_NAME,
       path: PROFILE_README_PATH,
-      message: '📊 Update contribution stats [org-motivation-bot]',
+      message: '📊 Update contribution stats [impact-board-bot]',
       content: Buffer.from(content).toString('base64'),
     };
     
@@ -243,7 +243,7 @@ export async function updateProfileReadme(
 }
 
 /**
- * Get the organization's config file (.org-motivation.yml)
+ * Get the organization's config file (.impact-board.yml)
  */
 export async function getOrgConfig(
   installationId: number,
