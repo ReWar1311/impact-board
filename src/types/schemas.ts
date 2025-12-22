@@ -235,6 +235,136 @@ export const privacySettingsSchema = z.object({
 });
 
 // ============================================================================
+// ImpactBoard YAML Schema (authoritative)
+// ============================================================================
+
+const yamlEntities = z.enum(['USER', 'REPO', 'ORG']);
+const yamlModes = z.enum(['full', 'assets-only', 'template']);
+
+export const impactYamlSchema = z
+  .object({
+    version: z.literal('v1'),
+    mode: yamlModes,
+    readme: z
+      .object({
+        file: z.string(),
+        allow: z
+          .object({
+            entities: z.array(yamlEntities).default(['USER', 'REPO', 'ORG']),
+            user_selectors: z
+              .object({
+                top_max: z.number().min(1).max(100).default(5),
+                allow_username: z.boolean().default(true),
+              })
+              .default({ top_max: 5, allow_username: true }),
+            fields: z
+              .array(
+                z.enum([
+                  'username',
+                  'commits',
+                  'prs',
+                  'issues_closed',
+                  'issues_open',
+                  'loc_added',
+                  'loc_removed',
+                  'streak',
+                  'rank',
+                  'impact',
+                  'repos',
+                  'last_active',
+                  'badge_svg',
+                ])
+              )
+              .default(['username', 'commits', 'prs', 'streak']),
+            max_placeholders: z.number().min(1).max(500).default(100),
+          })
+          .default({
+            entities: ['USER', 'REPO', 'ORG'],
+            user_selectors: { top_max: 5, allow_username: true },
+            fields: ['username', 'commits', 'prs', 'streak'],
+            max_placeholders: 100,
+          }),
+      })
+      .optional(),
+    template: z
+      .object({
+        name: z.string(),
+        version: z.string(),
+        target: z.object({ file: z.string() }),
+        options: z
+          .object({
+            show_leaderboard: z.boolean().optional(),
+            show_awards: z.boolean().optional(),
+            show_repositories: z.boolean().optional(),
+          })
+          .optional(),
+        overrides: z
+          .object({
+            window: z.enum(['7d', '30d', '90d', 'all-time']).optional(),
+            leaderboard_limit: z.number().min(1).max(100).optional(),
+          })
+          .optional(),
+      })
+      .optional(),
+    assets: z
+      .object({
+        base_path: z.string().default('assets/impactboard'),
+        svgs: z
+          .object({
+            leaderboard: z.object({ enabled: z.boolean().default(true), max_limit: z.number().min(1).max(100).default(10), window: z.enum(['7d', '30d', '90d', 'all-time']).default('30d') }).optional(),
+            badges: z.object({ enabled: z.boolean().default(true) }).optional(),
+            heatmap: z.object({ enabled: z.boolean().default(false) }).optional(),
+          })
+          .default({ leaderboard: { enabled: true, max_limit: 10, window: '30d' }, badges: { enabled: true }, heatmap: { enabled: false } }),
+      })
+      .optional(),
+    data: z
+      .object({
+        windows: z.object({ default: z.enum(['7d', '30d', '90d', 'all-time']).default('30d'), allowed: z.array(z.enum(['7d', '30d', '90d', 'all-time'])).default(['7d', '30d', '90d', 'all-time']) }).default({ default: '30d', allowed: ['7d', '30d', '90d', 'all-time'] }),
+        scoring: z
+          .object({
+            commit: z.number().optional(),
+            merged_pr: z.number().optional(),
+            closed_issue: z.number().optional(),
+            loc_weight: z.number().optional(),
+          })
+          .optional(),
+      })
+      .optional(),
+    privacy: z
+      .object({
+        default_visibility: z.enum(['public', 'private']).optional(),
+        public_users: z
+          .record(
+            z.object({
+              hide: z.array(z.enum(['rank', 'streak', 'impact'])).optional(),
+            })
+          )
+          .optional(),
+      })
+      .optional(),
+    advanced: z
+      .object({
+        anti_gaming: z
+          .object({
+            min_loc_change: z.number().optional(),
+            max_commits_per_day: z.number().optional(),
+            ignore_self_closed_issues: z.boolean().optional(),
+          })
+          .optional(),
+        behavior: z
+          .object({
+            fail_on_invalid_config: z.boolean().optional(),
+          })
+          .optional(),
+      })
+      .optional(),
+  })
+  .strict();
+
+export type ImpactYamlConfig = z.infer<typeof impactYamlSchema>;
+
+// ============================================================================
 // Database Record Schemas
 // ============================================================================
 

@@ -5,6 +5,7 @@ import {
   getProfileReadme, 
   updateProfileReadme,
   getOrgConfig,
+  createOctokitClient,
 } from '../github/client';
 import { repository } from '../storage/repository';
 import { aggregator } from '../stats/aggregator';
@@ -19,6 +20,11 @@ import { fetchContributionCalendar } from '../github/queries';
 import type { LeaderboardEntry, StoredInstallation, AggregatedStats } from '../types';
 import fs from 'fs';
 import path from 'path';
+import { loadImpactYamlConfig } from '../config/impactYaml';
+import { README_TARGET_PATH } from '../config/constants';
+import { writeLeaderboardSvg, writeHeatmapSvg } from '../assets/svgWriter';
+import { resolvePlaceholders } from './placeholderEngine';
+import { renderTemplateReadme } from './templateEngine';
 
 /**
  * README Publisher
@@ -136,6 +142,7 @@ class ReadmePublisher {
 
   /**
    * Update the profile README with current stats
+   * Supports YAML-driven modes: template, assets-only, full
    */
   async updateReadme(installationId: number, orgLogin: string): Promise<boolean> {
     logger.info({ orgLogin }, 'Updating profile README');
@@ -147,6 +154,142 @@ class ReadmePublisher {
       return false;
     }
 
+    // Get org ID
+    const orgData = await repository.installations.getByLogin(orgLogin);
+    if (!orgData) {
+      logger.warn({ orgLogin }, 'Installation not found');
+      return false;
+    }
+    const orgId = orgData.accountId;
+
+    // Load ImpactBoard YAML configuration
+    const config = await loadImpactYamlConfig(installationId, orgLogin);
+
+    // YAML-based mode handling
+    if (config) {
+      return this.handleYamlMode(installationId, orgId, orgLogin, config);
+    }
+
+    // Legacy mode: no YAML config, use original marker-based rendering
+    logger.debug({ orgLogin }, 'No ImpactBoard YAML found, using legacy mode');
+    return this.legacyUpdateReadme(installationId, orgId, orgLogin);
+  }
+
+  /**
+   * Handle YAML-driven modes: template, assets-only, full
+   */
+  private async handleYamlMode(
+    installationId: number,
+    orgId: number,
+    orgLogin: string,
+    config: import('../types/schemas').ImpactYamlConfig
+  ): Promise<boolean> {
+    try {
+      if (config.mode === 'template') {
+        // Template mode: render predefined template README
+        const content = await renderTemplateReadme(orgId, orgLogin, config);
+        return this.upsertReadmeFile(installationId, orgLogin, content);
+      }
+
+      if (config.mode === 'assets-only') {
+        // Assets-only mode: generate SVGs, do not modify README
+        const window = config.assets?.svgs?.leaderboard?.window ?? '30d';
+        const limit = config.assets?.svgs?.leaderboard?.max_limit ?? 10;
+        const stats = await aggregator.getOrgStats(orgId, window as any);
+        const optedOut = new Set(await repository.privacy.getOptedOutUsers(orgId));
+        const publicStats = stats.filter((s: AggregatedStats) => !optedOut.has(s.userId))
+          .sort((a: AggregatedStats, b: AggregatedStats) => b.weightedScore - a.weightedScore)
+          .slice(0, limit);
+        const entries: LeaderboardEntry[] = publicStats.map((s: AggregatedStats, i: number) => ({
+          rank: i + 1,
+          userId: s.userId,
+          userLogin: s.userLogin,
+          userAvatarUrl: s.userAvatarUrl,
+          weightedScore: s.weightedScore,
+          contributorRank: s.rank,
+          currentStreak: s.currentStreak,
+          topMetric: 'score',
+          topMetricValue: s.weightedScore,
+        }));
+        await writeLeaderboardSvg(installationId, orgId, orgLogin, config.assets?.base_path, entries);
+
+        // Heatmap
+        const heatmapData = await repository.contributions.getOrgDailyTotals(orgId, 30);
+        await writeHeatmapSvg(installationId, orgId, orgLogin, config.assets?.base_path, heatmapData);
+
+        logger.info({ orgLogin }, 'Assets-only mode: SVGs updated, README unchanged');
+        return true;
+      }
+
+      // Full mode: read current README, apply placeholders, then upsert
+      const octokit = await createOctokitClient(installationId);
+      let readmeContent = '';
+      try {
+        const res = await octokit.repos.getContent({
+          owner: orgLogin,
+          repo: '.github',
+          path: README_TARGET_PATH,
+        });
+        if ('content' in res.data) {
+          readmeContent = Buffer.from((res.data as any).content, 'base64').toString('utf8');
+        }
+      } catch (_) {
+        logger.warn({ orgLogin }, 'Could not fetch existing README for full mode');
+      }
+
+      const resolved = await resolvePlaceholders(orgId, installationId, orgLogin, readmeContent, config);
+      return this.upsertReadmeFile(installationId, orgLogin, resolved);
+    } catch (error) {
+      logger.error({ error, orgLogin }, 'Failed to handle YAML mode');
+      return false;
+    }
+  }
+
+  /**
+   * Upsert README file in .github repo
+   */
+  private async upsertReadmeFile(
+    installationId: number,
+    orgLogin: string,
+    content: string
+  ): Promise<boolean> {
+    try {
+      const octokit = await createOctokitClient(installationId);
+      const owner = orgLogin;
+      const repo = '.github';
+
+      // Try to get existing file to retrieve sha
+      let sha: string | undefined;
+      try {
+        const existing = await octokit.repos.getContent({ owner, repo, path: README_TARGET_PATH });
+        if ('sha' in existing.data) sha = (existing.data as any).sha;
+      } catch (_) {}
+
+      await octokit.repos.createOrUpdateFileContents({
+        owner,
+        repo,
+        path: README_TARGET_PATH,
+        message: '📣 Update ImpactBoard README',
+        content: Buffer.from(content).toString('base64'),
+        sha,
+      });
+
+      logger.info({ orgLogin }, 'Successfully updated profile README');
+      return true;
+    } catch (error) {
+      logger.error({ error, orgLogin }, 'Failed to upsert README file');
+      return false;
+    }
+  }
+
+  /**
+   * Legacy update README (original marker-based rendering)
+   */
+  private async legacyUpdateReadme(
+    installationId: number,
+    orgId: number,
+    orgLogin: string
+  ): Promise<boolean> {
     // Get current README
     const existingReadme = await getProfileReadme(installationId, orgLogin);
 
@@ -162,15 +305,6 @@ class ReadmePublisher {
         return false;
       }
     }
-
-    // Get org ID
-    const orgData = await repository.installations.getByLogin(orgLogin);
-    if (!orgData) {
-      logger.warn({ orgLogin }, 'Installation not found');
-      return false;
-    }
-
-    const orgId = orgData.accountId;
 
     // Gather all data for rendering
     const renderData = await this.gatherRenderData(installationId, orgId, orgLogin);

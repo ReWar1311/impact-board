@@ -38,6 +38,14 @@ export const PROFILE_REPO_NAME = '.github';
 export const PROFILE_README_PATH = 'profile/README.md';
 export const CONFIG_FILE_NAME = '.org-motivation.yml';
 
+// ImpactBoard (new system) YAML location inside the profile repo
+// File location is fixed and non-configurable per documentation
+export const IMPACTBOARD_YAML_PATH = 'impactboard.yml';
+
+// Default assets base path used in assets-only mode when not specified in YAML
+export const DEFAULT_ASSETS_BASE_PATH = 'assets/impactboard';
+export const README_TARGET_PATH = 'profile/README.md';
+
 // ============================================================================
 // README Markers
 // ============================================================================
