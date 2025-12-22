@@ -1,17 +1,23 @@
 import { repository } from '../storage/repository';
 import { aggregator } from '../stats/aggregator';
+import { getSvgReference } from '../assets/svgWriter';
 import type { AggregatedStats, StatsPeriod } from '../types';
 import type { ImpactYamlConfig } from '../types/schemas';
 
 interface PlaceholderMatch {
   full: string;
-  entity: 'USER' | 'REPO' | 'ORG';
+  entity: 'USER' | 'REPO' | 'ORG' | 'SVG';
   selector: string;
   field: string;
   options: Record<string, string>;
 }
 
-const PLACEHOLDER_REGEX = /\{\{IMPACTBOARD:([A-Z]+)\.([A-Z]+(?:\([^}]*\))?)\.([a-z_]+)(?:\s*\|\s*([^}]+))?\}\}/g;
+interface PlaceholderContext {
+  svgPaths?: { leaderboard: string; heatmap: string };
+  basePath?: string;
+}
+
+const PLACEHOLDER_REGEX = /\{\{IMPACTBOARD:([A-Z]+)\.([A-Z_]+(?:\([^}]*\))?)\.?([a-z_]*)(?:\s*\|\s*([^}]+))?\}\}/g;
 
 function parseOptions(raw?: string): Record<string, string> {
   if (!raw) return {};
@@ -107,14 +113,14 @@ function selectUser(stats: AggregatedStats[], selector: string): AggregatedStats
  * Resolve placeholders in README content with privacy-safe behavior.
  * - YAML decides what’s allowed; disallowed placeholders are left untouched.
  * - Privacy filtering applied before ranking/selection.
- * - Fallback used when resolution fails.
- */
+ * - Fallback used when resolution fails. * - SVG placeholders resolve to file references (not inline). */
 export async function resolvePlaceholders(
   orgId: number,
   installationId: number,
   orgLogin: string,
   readmeContent: string,
-  yaml: ImpactYamlConfig
+  yaml: ImpactYamlConfig,
+  context?: PlaceholderContext
 ): Promise<string> {
   // If YAML does not allow entities, leave content unchanged
   if (yaml.mode !== 'full' || !yaml.readme) return readmeContent;
@@ -136,9 +142,30 @@ export async function resolvePlaceholders(
   // Resolve each placeholder independently
   let result = readmeContent;
   for (const p of limited) {
-    if (!yaml.readme.allow.entities.includes(p.entity)) continue;
-
     const fallback = p.options['fallback'] ?? '';
+
+    // Handle SVG placeholders - e.g., {{IMPACTBOARD:SVG.LEADERBOARD}}
+    if (p.entity === 'SVG') {
+      if (context?.svgPaths) {
+        const svgType = p.selector.toLowerCase();
+        if (svgType === 'leaderboard' && context.svgPaths.leaderboard) {
+          const url = getSvgReference(orgLogin, context.svgPaths.leaderboard);
+          result = result.replace(p.full, url);
+          continue;
+        }
+        if (svgType === 'heatmap' && context.svgPaths.heatmap) {
+          const url = getSvgReference(orgLogin, context.svgPaths.heatmap);
+          result = result.replace(p.full, url);
+          continue;
+        }
+      }
+      result = result.replace(p.full, fallback);
+      continue;
+    }
+
+    // Check if this entity type is allowed (only USER, REPO, ORG - not SVG)
+    if (!yaml.readme.allow.entities.includes(p.entity as 'USER' | 'REPO' | 'ORG')) continue;
+
     const window = getPeriodFromOptions(p.options, allowedWindows as string[], defaultWindow as StatsPeriod);
 
     if (p.entity === 'USER') {

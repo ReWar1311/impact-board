@@ -21,8 +21,8 @@ import type { LeaderboardEntry, StoredInstallation, AggregatedStats } from '../t
 import fs from 'fs';
 import path from 'path';
 import { loadImpactYamlConfig } from '../config/impactYaml';
-import { README_TARGET_PATH } from '../config/constants';
-import { writeLeaderboardSvg, writeHeatmapSvg } from '../assets/svgWriter';
+import { DEFAULT_ASSETS_BASE_PATH } from '../config/constants';
+import { writeLeaderboardSvg, writeHeatmapSvg, writeAllSvgAssets, getSvgReference } from '../assets/svgWriter';
 import { resolvePlaceholders } from './placeholderEngine';
 import { renderTemplateReadme } from './templateEngine';
 
@@ -185,14 +185,17 @@ class ReadmePublisher {
     config: import('../types/schemas').ImpactYamlConfig
   ): Promise<boolean> {
     try {
+      const basePath = config.assets?.base_path ?? DEFAULT_ASSETS_BASE_PATH;
+
       if (config.mode === 'template') {
-        // Template mode: render predefined template README
-        const content = await renderTemplateReadme(orgId, orgLogin, config);
-        return this.upsertReadmeFile(installationId, orgLogin, content);
+        // Template mode: render predefined template README using SVG references
+        const targetFile = config.template?.target?.file ?? '.github/profile/README.md';
+        const content = await renderTemplateReadme(installationId, orgId, orgLogin, config);
+        return this.upsertReadmeFile(installationId, orgLogin, targetFile, content);
       }
 
       if (config.mode === 'assets-only') {
-        // Assets-only mode: generate SVGs, do not modify README
+        // Assets-only mode: ONLY generate SVGs, do NOT modify README
         const window = config.assets?.svgs?.leaderboard?.window ?? '30d';
         const limit = config.assets?.svgs?.leaderboard?.max_limit ?? 10;
         const stats = await aggregator.getOrgStats(orgId, window as any);
@@ -211,34 +214,72 @@ class ReadmePublisher {
           topMetric: 'score',
           topMetricValue: s.weightedScore,
         }));
-        await writeLeaderboardSvg(installationId, orgId, orgLogin, config.assets?.base_path, entries);
 
-        // Heatmap
+        // Heatmap data
         const heatmapData = await repository.contributions.getOrgDailyTotals(orgId, 30);
-        await writeHeatmapSvg(installationId, orgId, orgLogin, config.assets?.base_path, heatmapData);
 
-        logger.info({ orgLogin }, 'Assets-only mode: SVGs updated, README unchanged');
+        // Write all SVG assets
+        const paths = await writeAllSvgAssets(installationId, orgId, orgLogin, basePath, entries, heatmapData);
+
+        logger.info({ orgLogin, paths }, 'Assets-only mode: SVGs updated, README unchanged');
         return true;
       }
 
-      // Full mode: read current README, apply placeholders, then upsert
+      // Full mode: read from placeholder template, apply placeholders, then write to readme.file
+      const readmeFile = config.readme?.file ?? '.github/profile/README.md';
+      const placeholderTemplate = config.readme?.placeholder;
+
+      if (!placeholderTemplate) {
+        logger.error({ orgLogin }, 'Full mode requires readme.placeholder to be set in impactboard.yml');
+        return false;
+      }
+
+      // First, write SVG assets so placeholders can reference them
+      const window = config.data?.windows?.default ?? '30d';
+      const stats = await aggregator.getOrgStats(orgId, window as any);
+      const optedOut = new Set(await repository.privacy.getOptedOutUsers(orgId));
+      const publicStats = stats.filter((s: AggregatedStats) => !optedOut.has(s.userId))
+        .sort((a: AggregatedStats, b: AggregatedStats) => b.weightedScore - a.weightedScore)
+        .slice(0, 10);
+      const entries: LeaderboardEntry[] = publicStats.map((s: AggregatedStats, i: number) => ({
+        rank: i + 1,
+        userId: s.userId,
+        userLogin: s.userLogin,
+        userAvatarUrl: s.userAvatarUrl,
+        weightedScore: s.weightedScore,
+        contributorRank: s.rank,
+        currentStreak: s.currentStreak,
+        topMetric: 'score',
+        topMetricValue: s.weightedScore,
+      }));
+      const heatmapData = await repository.contributions.getOrgDailyTotals(orgId, 30);
+      const svgPaths = await writeAllSvgAssets(installationId, orgId, orgLogin, basePath, entries, heatmapData);
+
+      // Read the placeholder template file (NOT the main README)
       const octokit = await createOctokitClient(installationId);
-      let readmeContent = '';
+      let templateContent = '';
       try {
         const res = await octokit.repos.getContent({
           owner: orgLogin,
-          repo: '.github',
-          path: README_TARGET_PATH,
+          repo: placeholderTemplate.split('/')[0] || '.github',
+          path: placeholderTemplate.split('/').slice(1).join('/'),
         });
         if ('content' in res.data) {
-          readmeContent = Buffer.from((res.data as any).content, 'base64').toString('utf8');
+          templateContent = await Buffer.from((res.data as any).content, 'base64').toString('utf8');
         }
-      } catch (_) {
-        logger.warn({ orgLogin }, 'Could not fetch existing README for full mode');
+      } catch (err) {
+        logger.error({ orgLogin, placeholderTemplate }, 'Could not fetch placeholder template file');
+        return false;
       }
 
-      const resolved = await resolvePlaceholders(orgId, installationId, orgLogin, readmeContent, config);
-      return this.upsertReadmeFile(installationId, orgLogin, resolved);
+      // Resolve placeholders in the template, passing SVG paths for reference
+      const resolved = await resolvePlaceholders(orgId, installationId, orgLogin, templateContent, config, {
+        svgPaths,
+        basePath,
+      });
+
+      // Write resolved content to the actual README file
+      return await this.upsertReadmeFile(installationId, orgLogin, readmeFile, resolved);
     } catch (error) {
       logger.error({ error, orgLogin }, 'Failed to handle YAML mode');
       return false;
@@ -246,38 +287,40 @@ class ReadmePublisher {
   }
 
   /**
-   * Upsert README file in .github repo
+   * Upsert README file in .github repo at specified path
    */
   private async upsertReadmeFile(
     installationId: number,
     orgLogin: string,
+    filePath: string,
     content: string
   ): Promise<boolean> {
     try {
       const octokit = await createOctokitClient(installationId);
       const owner = orgLogin;
-      const repo = '.github';
+      const repo = filePath.split('/')[0] || '.github';
+      const path = filePath.split('/').slice(1).join('/');
 
       // Try to get existing file to retrieve sha
       let sha: string | undefined;
       try {
-        const existing = await octokit.repos.getContent({ owner, repo, path: README_TARGET_PATH });
+        const existing = await octokit.repos.getContent({ owner, repo, path });
         if ('sha' in existing.data) sha = (existing.data as any).sha;
       } catch (_) {}
 
       await octokit.repos.createOrUpdateFileContents({
         owner,
         repo,
-        path: README_TARGET_PATH,
+        path,
         message: '📣 Update ImpactBoard README',
         content: Buffer.from(content).toString('base64'),
         sha,
       });
 
-      logger.info({ orgLogin }, 'Successfully updated profile README');
+      logger.info({ orgLogin, filePath }, 'Successfully updated profile README');
       return true;
     } catch (error) {
-      logger.error({ error, orgLogin }, 'Failed to upsert README file');
+      logger.error({ error, orgLogin, filePath }, 'Failed to upsert README file');
       return false;
     }
   }

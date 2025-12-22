@@ -239,15 +239,24 @@ export const privacySettingsSchema = z.object({
 // ============================================================================
 
 const yamlEntities = z.enum(['USER', 'REPO', 'ORG']);
-const yamlModes = z.enum(['full', 'assets-only', 'template']);
+const yamlModes = z.enum(['full', 'assets-only', 'template']).default('full');
+const yamlWindows = z.enum(['7d', '30d', '90d', 'all-time']);
+
+// Helper to allow null and convert to undefined (for optional object fields)
+const nullableObject = <T extends z.ZodTypeAny>(schema: T) =>
+  z.union([schema, z.null()]).transform((val) => val ?? undefined);
 
 export const impactYamlSchema = z
   .object({
-    version: z.literal('v1'),
+    version: z.literal('v1').default('v1'),
     mode: yamlModes,
+    
+    // README settings (for full mode)
     readme: z
       .object({
-        file: z.string(),
+        file: z.string().default('.github/profile/README.md'),
+        placeholder: z.string().optional(),
+        // Template file for placeholder resolution (required for full mode)
         allow: z
           .object({
             entities: z.array(yamlEntities).default(['USER', 'REPO', 'ORG']),
@@ -275,65 +284,125 @@ export const impactYamlSchema = z
                   'badge_svg',
                 ])
               )
-              .default(['username', 'commits', 'prs', 'streak']),
+              .default(['username', 'commits', 'prs', 'streak', 'loc_added', 'impact']),
             max_placeholders: z.number().min(1).max(500).default(100),
           })
           .default({
             entities: ['USER', 'REPO', 'ORG'],
             user_selectors: { top_max: 5, allow_username: true },
-            fields: ['username', 'commits', 'prs', 'streak'],
+            fields: ['username', 'commits', 'prs', 'streak', 'loc_added', 'impact'],
             max_placeholders: 100,
           }),
       })
       .optional(),
-    template: z
+    
+    // Allow at root level (legacy/shorthand) - merged into readme.allow
+    allow: z
       .object({
-        name: z.string(),
-        version: z.string(),
-        target: z.object({ file: z.string() }),
-        options: z
-          .object({
-            show_leaderboard: z.boolean().optional(),
-            show_awards: z.boolean().optional(),
-            show_repositories: z.boolean().optional(),
-          })
-          .optional(),
-        overrides: z
-          .object({
-            window: z.enum(['7d', '30d', '90d', 'all-time']).optional(),
-            leaderboard_limit: z.number().min(1).max(100).optional(),
-          })
-          .optional(),
+        entities: z.array(yamlEntities).optional(),
       })
       .optional(),
+    user_selectors: z
+      .object({
+        top_max: z.number().min(1).max(100).optional(),
+        allow_username: z.boolean().optional(),
+      })
+      .optional(),
+    fields: z
+      .array(
+        z.enum([
+          'username',
+          'commits',
+          'prs',
+          'issues_closed',
+          'issues_open',
+          'loc_added',
+          'loc_removed',
+          'streak',
+          'rank',
+          'impact',
+          'repos',
+          'last_active',
+          'badge_svg',
+        ])
+      )
+      .optional(),
+    max_placeholders: z.number().min(1).max(500).optional(),
+    
+    // Template settings
+    template: z
+      .object({
+        name: z.string().default('default'),
+        version: z.string().default('1.0'),
+        target: z.object({ file: z.string() }).default({ file: '.github/profile/README.md' }),
+        options: z
+          .object({
+            show_leaderboard: z.boolean().default(true),
+            show_awards: z.boolean().default(true),
+            show_repositories: z.boolean().default(false),
+          })
+          .default({ show_leaderboard: true, show_awards: true, show_repositories: false }),
+        overrides: z
+          .object({
+            window: yamlWindows.default('30d'),
+            leaderboard_limit: z.number().min(1).max(100).default(10),
+          })
+          .default({ window: '30d', leaderboard_limit: 10 }),
+      })
+      .optional(),
+    
+    // Assets settings
     assets: z
       .object({
         base_path: z.string().default('assets/impactboard'),
         svgs: z
           .object({
-            leaderboard: z.object({ enabled: z.boolean().default(true), max_limit: z.number().min(1).max(100).default(10), window: z.enum(['7d', '30d', '90d', 'all-time']).default('30d') }).optional(),
-            badges: z.object({ enabled: z.boolean().default(true) }).optional(),
-            heatmap: z.object({ enabled: z.boolean().default(false) }).optional(),
+            leaderboard: nullableObject(
+              z.object({
+                enabled: z.boolean().default(true),
+                max_limit: z.number().min(1).max(100).default(10),
+                window: yamlWindows.default('30d'),
+              })
+            ).optional(),
+            badges: nullableObject(z.object({ enabled: z.boolean().default(true) })).optional(),
+            heatmap: nullableObject(z.object({ enabled: z.boolean().default(false) })).optional(),
           })
           .default({ leaderboard: { enabled: true, max_limit: 10, window: '30d' }, badges: { enabled: true }, heatmap: { enabled: false } }),
       })
       .optional(),
+    
+    // Data windows
     data: z
       .object({
-        windows: z.object({ default: z.enum(['7d', '30d', '90d', 'all-time']).default('30d'), allowed: z.array(z.enum(['7d', '30d', '90d', 'all-time'])).default(['7d', '30d', '90d', 'all-time']) }).default({ default: '30d', allowed: ['7d', '30d', '90d', 'all-time'] }),
-        scoring: z
+        windows: z
           .object({
-            commit: z.number().optional(),
-            merged_pr: z.number().optional(),
-            closed_issue: z.number().optional(),
-            loc_weight: z.number().optional(),
+            default: yamlWindows.default('30d'),
+            // Accept 'all' as alias for 'all-time'
+            allowed: z
+              .array(z.string())
+              .default(['7d', '30d', '90d', 'all-time'])
+              .transform((arr) =>
+                arr.map((v) => (v === 'all' ? 'all-time' : v)).filter((v) =>
+                  ['7d', '30d', '90d', 'all-time'].includes(v)
+                ) as ('7d' | '30d' | '90d' | 'all-time')[]
+              ),
           })
-          .optional(),
+          .default({ default: '30d', allowed: ['7d', '30d', '90d', 'all-time'] }),
+        scoring: nullableObject(
+          z.object({
+            commit: z.number().default(1),
+            merged_pr: z.number().default(5),
+            closed_issue: z.number().default(3),
+            loc_weight: z.number().default(0.1),
+          })
+        ).optional(),
       })
       .optional(),
-    privacy: z
-      .object({
-        default_visibility: z.enum(['public', 'private']).optional(),
+    
+    // Privacy
+    privacy: nullableObject(
+      z.object({
+        default_visibility: z.enum(['public', 'private']).default('public'),
         public_users: z
           .record(
             z.object({
@@ -342,25 +411,77 @@ export const impactYamlSchema = z
           )
           .optional(),
       })
-      .optional(),
-    advanced: z
-      .object({
-        anti_gaming: z
-          .object({
-            min_loc_change: z.number().optional(),
-            max_commits_per_day: z.number().optional(),
-            ignore_self_closed_issues: z.boolean().optional(),
+    ).optional(),
+    
+    // Advanced settings
+    advanced: nullableObject(
+      z.object({
+        anti_gaming: nullableObject(
+          z.object({
+            min_loc_change: z.number().default(5),
+            max_commits_per_day: z.number().default(50),
+            ignore_self_closed_issues: z.boolean().default(false),
           })
-          .optional(),
-        behavior: z
-          .object({
-            fail_on_invalid_config: z.boolean().optional(),
+        ).optional(),
+        behavior: nullableObject(
+          z.object({
+            fail_on_invalid_config: z.boolean().default(false),
           })
-          .optional(),
+        ).optional(),
       })
-      .optional(),
+    ).optional(),
+    
+    // Root-level behavior (legacy/shorthand)
+    behavior: nullableObject(
+      z.object({
+        fail_on_invalid_config: z.boolean().default(false),
+      })
+    ).optional(),
+    
+    // Logging (ignored but accepted)
+    logging: z.any().optional(),
   })
-  .strict();
+  .passthrough() // Allow unknown keys but ignore them
+  .transform((data) => {
+    // Merge root-level shorthand fields into proper nested structure
+    const result: Record<string, unknown> = { ...data };
+    
+    // Merge allow, user_selectors, fields, max_placeholders into readme.allow
+    if (data.allow || data.user_selectors || data.fields || data.max_placeholders) {
+      const existingReadme = result.readme as Record<string, unknown> | undefined;
+      const existingAllow = existingReadme?.allow as Record<string, unknown> | undefined;
+      const existingUserSelectors = existingAllow?.user_selectors as Record<string, unknown> | undefined;
+      
+      result.readme = {
+        file: existingReadme?.file ?? '.github/profile/README.md',
+        placeholder: existingReadme?.placeholder,
+        allow: {
+          entities: data.allow?.entities ?? existingAllow?.entities ?? ['USER', 'REPO', 'ORG'],
+          user_selectors: {
+            top_max: data.user_selectors?.top_max ?? existingUserSelectors?.top_max ?? 5,
+            allow_username: data.user_selectors?.allow_username ?? existingUserSelectors?.allow_username ?? true,
+          },
+          fields: data.fields ?? existingAllow?.fields ?? ['username', 'commits', 'prs', 'streak', 'loc_added', 'impact'],
+          max_placeholders: data.max_placeholders ?? existingAllow?.max_placeholders ?? 100,
+        },
+      };
+    }
+    
+    // Merge root-level behavior into advanced.behavior
+    if (data.behavior) {
+      const existingAdvanced = result.advanced as Record<string, unknown> | undefined;
+      const existingBehavior = existingAdvanced?.behavior as Record<string, unknown> | undefined;
+      
+      result.advanced = {
+        ...existingAdvanced,
+        behavior: {
+          fail_on_invalid_config: data.behavior?.fail_on_invalid_config ?? existingBehavior?.fail_on_invalid_config ?? false,
+        },
+      };
+    }
+    
+    return result as typeof data;
+  });
 
 export type ImpactYamlConfig = z.infer<typeof impactYamlSchema>;
 

@@ -7,6 +7,7 @@ import { webhookSignatureMiddleware } from './webhook/verifySignature';
 import { handleWebhook } from './webhook/handler';
 import { repository } from './storage/repository';
 import { readmePublisher } from './readme/publisher';
+import { validateImpactYamlConfig } from './config/impactYaml';
 
 /**
  * HTTP Server
@@ -415,6 +416,51 @@ app.get('/api/readme/status/:orgLogin', publicLimiter, async (req: Request, res:
       updateSchedule: installation.settings.readmeUpdateSchedule || 'hourly',
       lastUpdated: installation.updatedAt,
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Validate ImpactBoard YAML configuration
+ * 
+ * GET /api/readme/validate/:orgLogin
+ * 
+ * Returns validation result with detailed errors if any
+ */
+app.get('/api/readme/validate/:orgLogin', publicLimiter, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { orgLogin } = req.params;
+
+    if (!orgLogin) {
+      res.status(400).json({ error: 'Missing organization login' });
+      return;
+    }
+
+    const installation = await repository.installations.getByLogin(orgLogin);
+
+    if (!installation) {
+      res.status(404).json({ error: 'Organization not found. Make sure the app is installed.' });
+      return;
+    }
+
+    const result = await validateImpactYamlConfig(installation.installationId, orgLogin);
+
+    if (result.valid) {
+      res.status(200).json({
+        valid: true,
+        message: 'impactboard.yml is valid',
+        config: result.config,
+      });
+    } else {
+      res.status(200).json({
+        valid: false,
+        message: 'impactboard.yml has validation errors',
+        errors: result.errors,
+        rawYaml: result.rawYaml,
+        hint: 'Check the schema requirements. Required fields: version (must be "v1"), mode (must be "full", "assets-only", or "template")',
+      });
+    }
   } catch (error) {
     next(error);
   }
