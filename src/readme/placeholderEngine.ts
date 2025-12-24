@@ -1,7 +1,7 @@
 import { repository } from '../storage/repository';
 import { aggregator } from '../stats/aggregator';
-import { getSvgReference } from '../assets/svgWriter';
-import type { AggregatedStats, StatsPeriod } from '../types';
+import { getSvgReference, getThemedSvgMarkdown } from '../assets/svgWriter';
+import type { AggregatedStats, RepoAggregatedStats, OrgStatsSummary, StatsPeriod } from '../types';
 import type { ImpactYamlConfig } from '../types/schemas';
 
 interface PlaceholderMatch {
@@ -13,11 +13,11 @@ interface PlaceholderMatch {
 }
 
 interface PlaceholderContext {
-  svgPaths?: { leaderboard: string; heatmap: string };
+  svgPaths?: { leaderboard: string; leaderboardDark: string; heatmap: string; heatmapDark: string };
   basePath?: string;
 }
 
-const PLACEHOLDER_REGEX = /\{\{IMPACTBOARD:([A-Z]+)\.([A-Z_]+(?:\([^}]*\))?)\.?([a-z_]*)(?:\s*\|\s*([^}]+))?\}\}/g;
+const PLACEHOLDER_REGEX = /\{\{IMPACTBOARD:([A-Z]+)\.([A-Z_]+(?:\([^)]*\))?)\.?([a-z_]*)(?:\s*\|\s*([^}]+))?\}\}/g;
 
 function parseOptions(raw?: string): Record<string, string> {
   if (!raw) return {};
@@ -88,7 +88,7 @@ function resolveUserField(field: string, stat: AggregatedStats): string {
 }
 
 function selectUser(stats: AggregatedStats[], selector: string): AggregatedStats | null {
-  // TOP(n), RANK(n), USERNAME(x)
+  // TOP(n), RANK(n), USERNAME(x), NEW(n), ACTIVE(n)
   const topMatch = /^TOP\((\d+)\)$/.exec(selector);
   if (topMatch) {
     const idx = parseInt(topMatch[1] ?? '0', 10) - 1;
@@ -106,7 +106,94 @@ function selectUser(stats: AggregatedStats[], selector: string): AggregatedStats
     const login = usernameMatch[1];
     return stats.find((s) => s.userLogin === login) ?? null;
   }
+  // NEW(n) - newest contributors (by start date descending)
+  const newMatch = /^NEW\((\d+)\)$/.exec(selector);
+  if (newMatch) {
+    const sorted = [...stats].sort((a, b) => b.startDate.localeCompare(a.startDate));
+    const idx = parseInt(newMatch[1] ?? '0', 10) - 1;
+    if (idx >= 0 && idx < sorted.length) return sorted[idx] ?? null;
+    return null;
+  }
+  // ACTIVE(n) - most recently active
+  const activeMatch = /^ACTIVE\((\d+)\)$/.exec(selector);
+  if (activeMatch) {
+    const sorted = [...stats].sort((a, b) => b.endDate.localeCompare(a.endDate));
+    const idx = parseInt(activeMatch[1] ?? '0', 10) - 1;
+    if (idx >= 0 && idx < sorted.length) return sorted[idx] ?? null;
+    return null;
+  }
   return null;
+}
+
+/**
+ * Select a repo from stats by selector
+ */
+function selectRepo(stats: RepoAggregatedStats[], selector: string): RepoAggregatedStats | null {
+  // TOP(n), RANK(n), NAME(x)
+  const topMatch = /^TOP\((\d+)\)$/.exec(selector);
+  if (topMatch) {
+    const idx = parseInt(topMatch[1] ?? '0', 10) - 1;
+    if (idx >= 0 && idx < stats.length) return stats[idx] ?? null;
+    return null;
+  }
+  const rankMatch = /^RANK\((\d+)\)$/.exec(selector);
+  if (rankMatch) {
+    const idx = parseInt(rankMatch[1] ?? '0', 10) - 1;
+    if (idx >= 0 && idx < stats.length) return stats[idx] ?? null;
+    return null;
+  }
+  const nameMatch = /^NAME\(([^)]+)\)$/.exec(selector);
+  if (nameMatch) {
+    const name = nameMatch[1];
+    return stats.find((s) => s.repoName === name) ?? null;
+  }
+  return null;
+}
+
+/**
+ * Resolve REPO fields
+ */
+function resolveRepoField(field: string, stat: RepoAggregatedStats): string {
+  switch (field) {
+    case 'name':
+      return stat.repoName;
+    case 'commits':
+      return String(stat.totalCommits);
+    case 'prs':
+      return String(stat.totalPullRequestsMerged);
+    case 'issues':
+      return String(stat.totalIssues);
+    case 'loc_added':
+      return String(stat.totalLinesAdded);
+    case 'contributors':
+      return String(stat.uniqueContributors);
+    case 'status':
+      return stat.status;
+    default:
+      return '';
+  }
+}
+
+/**
+ * Resolve ORG fields from summary
+ */
+function resolveOrgField(field: string, summary: OrgStatsSummary): string {
+  switch (field) {
+    case 'active_users':
+      return String(summary.activeUsers);
+    case 'total_commits':
+      return String(summary.totalCommits);
+    case 'total_prs':
+      return String(summary.totalPullRequests);
+    case 'total_loc_added':
+      return String(summary.totalLinesAdded);
+    case 'total_repos':
+      return String(summary.totalRepositories);
+    case 'health_score':
+      return String(summary.healthScore);
+    default:
+      return '';
+  }
 }
 
 /**
@@ -122,14 +209,25 @@ export async function resolvePlaceholders(
   yaml: ImpactYamlConfig,
   context?: PlaceholderContext
 ): Promise<string> {
-  // If YAML does not allow entities, leave content unchanged
-  if (yaml.mode !== 'full' || !yaml.readme) return readmeContent;
+  // If not in full mode, leave content unchanged
+  if (yaml.mode !== 'full') return readmeContent;
 
   const matches = parsePlaceholder(readmeContent);
   if (matches.length === 0) return readmeContent;
 
+  // Use defaults if readme config is not defined
+  const readmeConfig = yaml.readme ?? {
+    file: '.github/profile/README.md',
+    allow: {
+      entities: ['USER', 'REPO', 'ORG'] as ('USER' | 'REPO' | 'ORG')[],
+      user_selectors: { top_max: 5, allow_username: true },
+      fields: ['username', 'commits', 'prs', 'streak', 'loc_added', 'impact'] as const,
+      max_placeholders: 100,
+    },
+  };
+
   // Enforce max placeholders
-  const maxPlaceholders = yaml.readme.allow.max_placeholders;
+  const maxPlaceholders = readmeConfig.allow.max_placeholders;
   const limited = matches.slice(0, maxPlaceholders);
 
   // Determine default/allowed windows
@@ -144,10 +242,22 @@ export async function resolvePlaceholders(
   for (const p of limited) {
     const fallback = p.options['fallback'] ?? '';
 
-    // Handle SVG placeholders - e.g., {{IMPACTBOARD:SVG.LEADERBOARD}}
+    // Handle SVG placeholders - e.g., {{IMPACTBOARD:SVG.LEADERBOARD}} or {{IMPACTBOARD:SVG.LEADERBOARD_THEMED}}
     if (p.entity === 'SVG') {
       if (context?.svgPaths) {
         const svgType = p.selector.toLowerCase();
+        // Themed variants emit <picture> with light/dark sources
+        if (svgType === 'leaderboard_themed' && context.svgPaths.leaderboard && context.svgPaths.leaderboardDark) {
+          const html = getThemedSvgMarkdown(orgLogin, context.svgPaths.leaderboard, context.svgPaths.leaderboardDark, 'Leaderboard');
+          result = result.replace(p.full, html);
+          continue;
+        }
+        if (svgType === 'heatmap_themed' && context.svgPaths.heatmap && context.svgPaths.heatmapDark) {
+          const html = getThemedSvgMarkdown(orgLogin, context.svgPaths.heatmap, context.svgPaths.heatmapDark, 'Activity Heatmap');
+          result = result.replace(p.full, html);
+          continue;
+        }
+        // Non-themed - just light mode URL
         if (svgType === 'leaderboard' && context.svgPaths.leaderboard) {
           const url = getSvgReference(orgLogin, context.svgPaths.leaderboard);
           result = result.replace(p.full, url);
@@ -158,13 +268,24 @@ export async function resolvePlaceholders(
           result = result.replace(p.full, url);
           continue;
         }
+        // Dark-only variants
+        if (svgType === 'leaderboard_dark' && context.svgPaths.leaderboardDark) {
+          const url = getSvgReference(orgLogin, context.svgPaths.leaderboardDark);
+          result = result.replace(p.full, url);
+          continue;
+        }
+        if (svgType === 'heatmap_dark' && context.svgPaths.heatmapDark) {
+          const url = getSvgReference(orgLogin, context.svgPaths.heatmapDark);
+          result = result.replace(p.full, url);
+          continue;
+        }
       }
       result = result.replace(p.full, fallback);
       continue;
     }
 
     // Check if this entity type is allowed (only USER, REPO, ORG - not SVG)
-    if (!yaml.readme.allow.entities.includes(p.entity as 'USER' | 'REPO' | 'ORG')) continue;
+    if (!readmeConfig.allow.entities.includes(p.entity as 'USER' | 'REPO' | 'ORG')) continue;
 
     const window = getPeriodFromOptions(p.options, allowedWindows as string[], defaultWindow as StatsPeriod);
 
@@ -175,7 +296,7 @@ export async function resolvePlaceholders(
       const stats = applyPrivacyFilter(orgId, statsRaw, optedOutIds).sort((a, b) => b.weightedScore - a.weightedScore);
 
       // Enforce TOP(n) bounds from YAML
-      const topMax = yaml.readme.allow.user_selectors.top_max;
+      const topMax = readmeConfig.allow.user_selectors.top_max;
       const topMatch = /^TOP\((\d+)\)$/.exec(p.selector);
       if (topMatch) {
         const n = parseInt(topMatch[1] ?? '0', 10);
@@ -204,8 +325,54 @@ export async function resolvePlaceholders(
       continue;
     }
 
-    // REPO/ORG entities can be extended; for now, leave unchanged
+    // Handle REPO entity
+    if (p.entity === 'REPO') {
+      const repoStats = await repository.repoAggregates.getByOrg(orgId, window as StatsPeriod);
+      // Sort by commits (most active)
+      const sorted = [...repoStats].sort((a, b) => b.totalCommits - a.totalCommits);
+      const selected = selectRepo(sorted, p.selector);
+      if (!selected) {
+        result = result.replace(p.full, fallback);
+        continue;
+      }
+      const value = resolveRepoField(p.field, selected);
+      result = result.replace(p.full, value || fallback);
+      continue;
+    }
+
+    // Handle ORG entity - simple fields without selector
+    if (p.entity === 'ORG') {
+      const summary = await repository.orgStats.getSummary(orgId, window as StatsPeriod);
+      // For ORG, the selector IS the field (e.g., {{IMPACTBOARD:ORG.active_users}})
+      const field = p.selector.toLowerCase();
+      const value = resolveOrgField(field, summary);
+      result = result.replace(p.full, value || fallback);
+      continue;
+    }
   }
 
   return result;
+}
+
+/**
+ * Format a value according to format option
+ */
+export function formatValue(value: string | number, format?: string): string {
+  const num = typeof value === 'number' ? value : parseInt(String(value), 10);
+  if (isNaN(num)) return String(value);
+
+  switch (format) {
+    case 'compact':
+      if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
+      if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
+      return String(num);
+    case 'number':
+      return num.toLocaleString();
+    case 'badge':
+      return `\`${num}\``;
+    case 'fire':
+      return num > 0 ? `🔥 ${num}` : String(num);
+    default:
+      return String(value);
+  }
 }

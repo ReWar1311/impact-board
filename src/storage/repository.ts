@@ -6,6 +6,8 @@ import type {
   StoredInstallation,
   DailyContribution,
   AggregatedStats,
+  RepoAggregatedStats,
+  OrgStatsSummary,
   StreakInfo,
   Award,
   UserPrivacySettings,
@@ -940,6 +942,304 @@ const privacyRepo = {
 };
 
 // ============================================================================
+// Repositories Repository
+// ============================================================================
+
+const repositoriesRepo = {
+  async upsert(repo: {
+    repoId: number;
+    orgId: number;
+    name: string;
+    fullName: string;
+    isPrivate: boolean;
+    defaultBranch?: string;
+    htmlUrl?: string;
+    pushedAt?: Date;
+  }): Promise<void> {
+    await query(
+      `INSERT INTO repositories (repo_id, org_id, name, full_name, private, default_branch, html_url, pushed_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+       ON CONFLICT (repo_id) 
+       DO UPDATE SET name = $3, full_name = $4, private = $5, default_branch = $6, html_url = $7, pushed_at = $8, updated_at = NOW()`,
+      [repo.repoId, repo.orgId, repo.name, repo.fullName, repo.isPrivate, repo.defaultBranch ?? null, repo.htmlUrl ?? null, repo.pushedAt ?? null]
+    );
+  },
+
+  async get(repoId: number): Promise<{ repoId: number; orgId: number; name: string; fullName: string; isPrivate: boolean } | null> {
+    const row = await queryOne<{ repo_id: number; org_id: number; name: string; full_name: string; private: boolean }>(
+      'SELECT * FROM repositories WHERE repo_id = $1',
+      [repoId]
+    );
+    if (!row) return null;
+    return { repoId: row.repo_id, orgId: row.org_id, name: row.name, fullName: row.full_name, isPrivate: row.private };
+  },
+
+  async getByName(orgId: number, name: string): Promise<{ repoId: number; orgId: number; name: string; fullName: string; isPrivate: boolean } | null> {
+    const row = await queryOne<{ repo_id: number; org_id: number; name: string; full_name: string; private: boolean }>(
+      'SELECT * FROM repositories WHERE org_id = $1 AND name = $2',
+      [orgId, name]
+    );
+    if (!row) return null;
+    return { repoId: row.repo_id, orgId: row.org_id, name: row.name, fullName: row.full_name, isPrivate: row.private };
+  },
+
+  async getByOrg(orgId: number): Promise<Array<{ repoId: number; name: string; fullName: string; isPrivate: boolean }>> {
+    const rows = await query<{ repo_id: number; name: string; full_name: string; private: boolean }>(
+      'SELECT * FROM repositories WHERE org_id = $1 ORDER BY name',
+      [orgId]
+    );
+    return rows.map((r) => ({ repoId: r.repo_id, name: r.name, fullName: r.full_name, isPrivate: r.private }));
+  },
+
+  async count(orgId: number): Promise<number> {
+    const row = await queryOne<{ count: string }>('SELECT COUNT(*) FROM repositories WHERE org_id = $1', [orgId]);
+    return row ? parseInt(row.count, 10) : 0;
+  },
+};
+
+// ============================================================================
+// Repo Daily Contributions Repository
+// ============================================================================
+
+const repoDailyContributionsRepo = {
+  async upsertDaily(contribution: {
+    orgId: number;
+    repoId: number;
+    repoName: string;
+    date: string;
+    commits: number;
+    pullRequestsMerged: number;
+    issuesOpened: number;
+    issuesClosed: number;
+    linesAdded: number;
+    linesRemoved: number;
+    contributors: number[];
+  }): Promise<void> {
+    await query(
+      `INSERT INTO repo_daily_contributions
+       (org_id, repo_id, repo_name, date, commits, pull_requests_merged, issues_opened, issues_closed, lines_added, lines_removed, contributors, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+       ON CONFLICT (org_id, repo_id, date)
+       DO UPDATE SET commits = repo_daily_contributions.commits + $5,
+                     pull_requests_merged = repo_daily_contributions.pull_requests_merged + $6,
+                     issues_opened = repo_daily_contributions.issues_opened + $7,
+                     issues_closed = repo_daily_contributions.issues_closed + $8,
+                     lines_added = repo_daily_contributions.lines_added + $9,
+                     lines_removed = repo_daily_contributions.lines_removed + $10,
+                     contributors = array_cat(repo_daily_contributions.contributors, $11),
+                     updated_at = NOW()`,
+      [
+        contribution.orgId,
+        contribution.repoId,
+        contribution.repoName,
+        contribution.date,
+        contribution.commits,
+        contribution.pullRequestsMerged,
+        contribution.issuesOpened,
+        contribution.issuesClosed,
+        contribution.linesAdded,
+        contribution.linesRemoved,
+        contribution.contributors,
+      ]
+    );
+  },
+
+  async getRange(orgId: number, repoId: number, startDate: string, endDate: string): Promise<Array<{
+    date: string;
+    commits: number;
+    pullRequestsMerged: number;
+    issuesOpened: number;
+    issuesClosed: number;
+    linesAdded: number;
+    linesRemoved: number;
+    contributors: number[];
+  }>> {
+    const rows = await query<{
+      date: string;
+      commits: number;
+      pull_requests_merged: number;
+      issues_opened: number;
+      issues_closed: number;
+      lines_added: number;
+      lines_removed: number;
+      contributors: number[];
+    }>(
+      `SELECT * FROM repo_daily_contributions WHERE org_id = $1 AND repo_id = $2 AND date >= $3 AND date <= $4 ORDER BY date ASC`,
+      [orgId, repoId, startDate, endDate]
+    );
+    return rows.map((r) => ({
+      date: r.date,
+      commits: r.commits,
+      pullRequestsMerged: r.pull_requests_merged,
+      issuesOpened: r.issues_opened,
+      issuesClosed: r.issues_closed,
+      linesAdded: r.lines_added,
+      linesRemoved: r.lines_removed,
+      contributors: r.contributors,
+    }));
+  },
+};
+
+// ============================================================================
+// Repo Aggregated Stats Repository
+// ============================================================================
+
+const repoAggregatesRepo = {
+  async upsert(stats: RepoAggregatedStats): Promise<void> {
+    await query(
+      `INSERT INTO repo_aggregated_stats 
+       (org_id, repo_id, repo_name, period, start_date, end_date, total_commits, total_pull_requests_merged,
+        total_issues, total_lines_added, total_lines_removed, unique_contributors, last_activity, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       ON CONFLICT (org_id, repo_id, period) 
+       DO UPDATE SET repo_name = $3, start_date = $5, end_date = $6, total_commits = $7, total_pull_requests_merged = $8,
+                     total_issues = $9, total_lines_added = $10, total_lines_removed = $11, unique_contributors = $12,
+                     last_activity = $13, status = $14`,
+      [
+        stats.orgId,
+        stats.repoId,
+        stats.repoName,
+        stats.period,
+        stats.startDate,
+        stats.endDate,
+        stats.totalCommits,
+        stats.totalPullRequestsMerged,
+        stats.totalIssues,
+        stats.totalLinesAdded,
+        stats.totalLinesRemoved,
+        stats.uniqueContributors,
+        stats.lastActivity ?? null,
+        stats.status,
+      ]
+    );
+  },
+
+  async get(orgId: number, repoId: number, period: StatsPeriod): Promise<RepoAggregatedStats | null> {
+    const row = await queryOne<{
+      org_id: number;
+      repo_id: number;
+      repo_name: string;
+      period: string;
+      start_date: string;
+      end_date: string;
+      total_commits: number;
+      total_pull_requests_merged: number;
+      total_issues: number;
+      total_lines_added: number;
+      total_lines_removed: number;
+      unique_contributors: number;
+      last_activity: string | null;
+      status: string;
+    }>('SELECT * FROM repo_aggregated_stats WHERE org_id = $1 AND repo_id = $2 AND period = $3', [orgId, repoId, period]);
+    if (!row) return null;
+    return mapRepoAggregatedStats(row);
+  },
+
+  async getByOrg(orgId: number, period: StatsPeriod): Promise<RepoAggregatedStats[]> {
+    const rows = await query<{
+      org_id: number;
+      repo_id: number;
+      repo_name: string;
+      period: string;
+      start_date: string;
+      end_date: string;
+      total_commits: number;
+      total_pull_requests_merged: number;
+      total_issues: number;
+      total_lines_added: number;
+      total_lines_removed: number;
+      unique_contributors: number;
+      last_activity: string | null;
+      status: string;
+    }>('SELECT * FROM repo_aggregated_stats WHERE org_id = $1 AND period = $2 ORDER BY total_commits DESC', [orgId, period]);
+    return rows.map(mapRepoAggregatedStats);
+  },
+
+  async getByName(orgId: number, repoName: string, period: StatsPeriod): Promise<RepoAggregatedStats | null> {
+    const row = await queryOne<{
+      org_id: number;
+      repo_id: number;
+      repo_name: string;
+      period: string;
+      start_date: string;
+      end_date: string;
+      total_commits: number;
+      total_pull_requests_merged: number;
+      total_issues: number;
+      total_lines_added: number;
+      total_lines_removed: number;
+      unique_contributors: number;
+      last_activity: string | null;
+      status: string;
+    }>('SELECT * FROM repo_aggregated_stats WHERE org_id = $1 AND repo_name = $2 AND period = $3', [orgId, repoName, period]);
+    if (!row) return null;
+    return mapRepoAggregatedStats(row);
+  },
+};
+
+function mapRepoAggregatedStats(row: {
+  org_id: number;
+  repo_id: number;
+  repo_name: string;
+  period: string;
+  start_date: string;
+  end_date: string;
+  total_commits: number;
+  total_pull_requests_merged: number;
+  total_issues: number;
+  total_lines_added: number;
+  total_lines_removed: number;
+  unique_contributors: number;
+  last_activity: string | null;
+  status: string;
+}): RepoAggregatedStats {
+  return {
+    orgId: row.org_id,
+    repoId: row.repo_id,
+    repoName: row.repo_name,
+    period: row.period as StatsPeriod,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    totalCommits: row.total_commits,
+    totalPullRequestsMerged: row.total_pull_requests_merged,
+    totalIssues: row.total_issues,
+    totalLinesAdded: row.total_lines_added,
+    totalLinesRemoved: row.total_lines_removed,
+    uniqueContributors: row.unique_contributors,
+    lastActivity: row.last_activity,
+    status: row.status,
+  };
+}
+
+// ============================================================================
+// Org Stats Repository (computed summaries)
+// ============================================================================
+
+const orgStatsRepo = {
+  async getSummary(orgId: number, period: StatsPeriod): Promise<OrgStatsSummary> {
+    const userStats = await aggregatesRepo.getByOrg(orgId, period);
+    const repoStats = await repoAggregatesRepo.getByOrg(orgId, period);
+
+    const activeUsers = userStats.length;
+    const totalCommits = userStats.reduce((sum, s) => sum + s.totalCommits, 0);
+    const totalPullRequests = userStats.reduce((sum, s) => sum + s.totalPullRequestsMerged, 0);
+    const totalLinesAdded = userStats.reduce((sum, s) => sum + s.totalLinesAdded, 0);
+    const totalRepositories = repoStats.length;
+
+    // Simple health score based on activity diversity
+    const healthScore = Math.min(100, Math.round(
+      (activeUsers > 0 ? 30 : 0) +
+      (totalCommits > 100 ? 20 : totalCommits / 5) +
+      (totalPullRequests > 10 ? 20 : totalPullRequests * 2) +
+      (totalRepositories > 5 ? 15 : totalRepositories * 3) +
+      (totalLinesAdded > 1000 ? 15 : Math.round(totalLinesAdded / 70))
+    ));
+
+    return { orgId, period, activeUsers, totalCommits, totalPullRequests, totalLinesAdded, totalRepositories, healthScore };
+  },
+};
+
+// ============================================================================
 // Export Repository
 // ============================================================================
 
@@ -952,6 +1252,10 @@ export const repository = {
   awards: awardsRepo,
   processedEvents: processedEventsRepo,
   privacy: privacyRepo,
+  repositories: repositoriesRepo,
+  repoContributions: repoDailyContributionsRepo,
+  repoAggregates: repoAggregatesRepo,
+  orgStats: orgStatsRepo,
   
   // Pool management
   initialize: initializePool,

@@ -142,6 +142,36 @@ export interface AggregatedStats {
 
 export type StatsPeriod = '7d' | '30d' | '90d' | 'all-time' | 'monthly';
 
+// Repo-level aggregates
+export interface RepoAggregatedStats {
+  orgId: number;
+  repoId: number;
+  repoName: string;
+  period: StatsPeriod;
+  startDate: string;
+  endDate: string;
+  totalCommits: number;
+  totalPullRequestsMerged: number;
+  totalIssues: number;
+  totalLinesAdded: number;
+  totalLinesRemoved: number;
+  uniqueContributors: number;
+  lastActivity?: string | null;
+  status: string;
+}
+
+// Org-level summary
+export interface OrgStatsSummary {
+  orgId: number;
+  period: StatsPeriod;
+  activeUsers: number;
+  totalCommits: number;
+  totalPullRequests: number;
+  totalLinesAdded: number;
+  totalRepositories: number;
+  healthScore: number;
+}
+
 // ============================================================================
 // Ranking Types
 // ============================================================================

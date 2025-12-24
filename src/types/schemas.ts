@@ -338,10 +338,11 @@ export const impactYamlSchema = z
         options: z
           .object({
             show_leaderboard: z.boolean().default(true),
+            show_heatmap: z.boolean().default(true),
             show_awards: z.boolean().default(true),
             show_repositories: z.boolean().default(false),
           })
-          .default({ show_leaderboard: true, show_awards: true, show_repositories: false }),
+          .default({ show_leaderboard: true, show_heatmap: true, show_awards: true, show_repositories: false }),
         overrides: z
           .object({
             window: yamlWindows.default('30d'),

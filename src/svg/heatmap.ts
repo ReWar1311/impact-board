@@ -31,7 +31,8 @@ export function generateHeatmapSvg(
   options: Partial<SvgOptions> = {}
 ): string {
   const opts = { ...DEFAULT_OPTIONS, ...options };
-  const theme = opts.darkMode ? DEFAULT_DARK_THEME : opts.theme;
+  const isDarkMode = opts.darkMode ?? false;
+  const theme = isDarkMode ? DEFAULT_DARK_THEME : opts.theme;
   
   const cellSize = SVG.HEATMAP.CELL_SIZE;
   const cellGap = SVG.HEATMAP.CELL_GAP;
@@ -72,7 +73,7 @@ export function generateHeatmapSvg(
       
       const count = dataMap.get(dateStr) ?? 0;
       const intensity = maxCount > 0 ? count / maxCount : 0;
-      const color = getHeatmapColor(intensity, theme);
+      const color = getHeatmapColor(intensity, theme, isDarkMode);
       
       const x = padding + dayLabelWidth + week * totalCellSize;
       const y = padding + monthLabelHeight + day * totalCellSize;
@@ -122,7 +123,7 @@ export function generateHeatmapSvg(
   const legendY = height - 15;
   const legendLevels = [0, 0.25, 0.5, 0.75, 1];
   const legend = legendLevels.map((level, index) => {
-    const color = getHeatmapColor(level, theme);
+    const color = getHeatmapColor(level, theme, isDarkMode);
     return `<rect x="${legendX + 50 + index * 15}" y="${legendY - 10}" width="${cellSize}" height="${cellSize}" rx="2" fill="${color}"/>`;
   }).join('');
   
@@ -163,24 +164,47 @@ export function generateHeatmapSvg(
 }
 
 /**
- * Get heatmap color based on intensity
+ * GitHub-style heatmap color levels (light mode)
  */
-function getHeatmapColor(intensity: number, theme: SvgTheme): string {
+const HEATMAP_COLORS_LIGHT = [
+  '#ebedf0', // 0: no contributions (base)
+  '#9be9a8', // 1: low
+  '#40c463', // 2: medium-low  
+  '#30a14e', // 3: medium-high
+  '#216e39', // 4: high
+];
+
+/**
+ * GitHub-style heatmap color levels (dark mode)
+ */
+const HEATMAP_COLORS_DARK = [
+  '#161b22', // 0: no contributions (base)
+  '#0e4429', // 1: low
+  '#006d32', // 2: medium-low
+  '#26a641', // 3: medium-high
+  '#39d353', // 4: high
+];
+
+/**
+ * Get heatmap color based on intensity using GitHub-style discrete levels
+ */
+function getHeatmapColor(intensity: number, theme: SvgTheme, isDarkMode: boolean = false): string {
+  const colors = isDarkMode ? HEATMAP_COLORS_DARK : HEATMAP_COLORS_LIGHT;
+  
   if (intensity === 0) {
-    return theme.barBackground;
+    return colors[0]!;
   }
   
-  // Create color gradient from light to dark accent
-  const baseColor = hexToRgb(theme.accent);
-  if (!baseColor) {
-    return theme.accent;
+  // Map intensity (0-1) to color level (1-4)
+  if (intensity <= 0.25) {
+    return colors[1]!;
+  } else if (intensity <= 0.5) {
+    return colors[2]!;
+  } else if (intensity <= 0.75) {
+    return colors[3]!;
+  } else {
+    return colors[4]!;
   }
-  
-  // Interpolate from light to full color
-  const minOpacity = 0.2;
-  const opacity = minOpacity + intensity * (1 - minOpacity);
-  
-  return `rgba(${baseColor.r}, ${baseColor.g}, ${baseColor.b}, ${opacity})`;
 }
 
 /**
@@ -205,7 +229,8 @@ export function generateMiniHeatmapSvg(
   options: Partial<SvgOptions> = {}
 ): string {
   const opts = { ...DEFAULT_OPTIONS, width: 400, height: 60, ...options };
-  const theme = opts.darkMode ? DEFAULT_DARK_THEME : opts.theme;
+  const isDarkMode = opts.darkMode ?? false;
+  const theme = isDarkMode ? DEFAULT_DARK_THEME : opts.theme;
   
   const cellSize = 10;
   const cellGap = 2;
@@ -240,7 +265,7 @@ export function generateMiniHeatmapSvg(
     
     const count = dataMap.get(dateStr) ?? 0;
     const intensity = maxCount > 0 ? count / maxCount : 0;
-    const color = getHeatmapColor(intensity, theme);
+    const color = getHeatmapColor(intensity, theme, isDarkMode);
     
     const x = padding + i * totalCellSize;
     const y = padding;

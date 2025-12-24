@@ -117,7 +117,17 @@ class StatsCollector {
     await repository.contributions.upsertDaily(daily);
 
     // Trigger aggregation update
-    await aggregator.updateAggregates(contribution.orgId, userId, contribution.userLogin);
+    await aggregator.updateAggregates(contribution.orgId, contribution.userId, contribution.userLogin);
+
+    // Record repo-level contribution
+    await this.recordRepoContribution(
+      contribution.orgId,
+      contribution.repoId,
+      contribution.repoName,
+      dateStr,
+      { commits: contribution.commitCount, linesAdded: contribution.linesAdded, linesRemoved: contribution.linesRemoved },
+      userId
+    );
 
     logger.debug({
       orgId: contribution.orgId,
@@ -165,6 +175,16 @@ class StatsCollector {
     // Trigger aggregation update
     await aggregator.updateAggregates(contribution.orgId, contribution.userId, contribution.userLogin);
 
+    // Record repo-level PR contribution
+    await this.recordRepoContribution(
+      contribution.orgId,
+      contribution.repoId,
+      contribution.repoName,
+      dateStr,
+      { pullRequestsMerged: 1, linesAdded: contribution.linesAdded, linesRemoved: contribution.linesRemoved },
+      contribution.userId
+    );
+
     logger.debug({
       orgId: contribution.orgId,
       userId: contribution.userId,
@@ -209,6 +229,16 @@ class StatsCollector {
     // Trigger aggregation update
     await aggregator.updateAggregates(contribution.orgId, contribution.userId, contribution.userLogin);
 
+    // Record repo-level issue opened
+    await this.recordRepoContribution(
+      contribution.orgId,
+      contribution.repoId,
+      contribution.repoName,
+      dateStr,
+      { issuesOpened: 1 },
+      contribution.userId
+    );
+
     logger.debug({
       orgId: contribution.orgId,
       userId: contribution.userId,
@@ -252,6 +282,16 @@ class StatsCollector {
 
     // Trigger aggregation update
     await aggregator.updateAggregates(contribution.orgId, contribution.userId, contribution.userLogin);
+
+    // Record repo-level issue closed
+    await this.recordRepoContribution(
+      contribution.orgId,
+      contribution.repoId,
+      contribution.repoName,
+      dateStr,
+      { issuesClosed: 1 },
+      contribution.userId
+    );
 
     logger.debug({
       orgId: contribution.orgId,
@@ -311,6 +351,32 @@ class StatsCollector {
       daily.rawScore +
       cappedLinesAdded * SCORING.LINE_ADDED_WEIGHT +
       cappedLinesRemoved * SCORING.LINE_REMOVED_WEIGHT;
+  }
+
+  /**
+   * Record repo-level daily contribution
+   */
+  private async recordRepoContribution(
+    orgId: number,
+    repoId: number,
+    repoName: string,
+    date: string,
+    counts: { commits?: number; pullRequestsMerged?: number; issuesOpened?: number; issuesClosed?: number; linesAdded?: number; linesRemoved?: number },
+    userId: number
+  ): Promise<void> {
+    await repository.repoContributions.upsertDaily({
+      orgId,
+      repoId,
+      repoName,
+      date,
+      commits: counts.commits ?? 0,
+      pullRequestsMerged: counts.pullRequestsMerged ?? 0,
+      issuesOpened: counts.issuesOpened ?? 0,
+      issuesClosed: counts.issuesClosed ?? 0,
+      linesAdded: counts.linesAdded ?? 0,
+      linesRemoved: counts.linesRemoved ?? 0,
+      contributors: [userId],
+    });
   }
 }
 

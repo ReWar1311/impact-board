@@ -94,6 +94,69 @@ CREATE INDEX IF NOT EXISTS idx_aggregated_stats_org_id ON aggregated_stats(org_i
 CREATE INDEX IF NOT EXISTS idx_aggregated_stats_org_period ON aggregated_stats(org_id, period);
 CREATE INDEX IF NOT EXISTS idx_aggregated_stats_weighted_score ON aggregated_stats(weighted_score DESC);
 
+-- Repositories table
+CREATE TABLE IF NOT EXISTS repositories (
+  repo_id INTEGER PRIMARY KEY,
+  org_id INTEGER NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  full_name VARCHAR(500) NOT NULL,
+  private BOOLEAN NOT NULL DEFAULT false,
+  default_branch VARCHAR(255),
+  html_url TEXT,
+  pushed_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_repositories_org_id ON repositories(org_id);
+
+-- Repo daily contributions (aggregated per repo per org per day)
+CREATE TABLE IF NOT EXISTS repo_daily_contributions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  org_id INTEGER NOT NULL,
+  repo_id INTEGER NOT NULL,
+  repo_name VARCHAR(255) NOT NULL,
+  date DATE NOT NULL,
+  commits INTEGER NOT NULL DEFAULT 0,
+  pull_requests_merged INTEGER NOT NULL DEFAULT 0,
+  issues_opened INTEGER NOT NULL DEFAULT 0,
+  issues_closed INTEGER NOT NULL DEFAULT 0,
+  lines_added INTEGER NOT NULL DEFAULT 0,
+  lines_removed INTEGER NOT NULL DEFAULT 0,
+  contributors INTEGER[] NOT NULL DEFAULT '{}',
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  UNIQUE(org_id, repo_id, date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_repo_daily_org_repo ON repo_daily_contributions(org_id, repo_id);
+CREATE INDEX IF NOT EXISTS idx_repo_daily_date ON repo_daily_contributions(date);
+
+-- Repo aggregated stats table
+CREATE TABLE IF NOT EXISTS repo_aggregated_stats (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  org_id INTEGER NOT NULL,
+  repo_id INTEGER NOT NULL,
+  repo_name VARCHAR(255) NOT NULL,
+  period VARCHAR(20) NOT NULL CHECK (period IN ('7d', '30d', '90d', 'monthly', 'all-time')),
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+  total_commits INTEGER NOT NULL DEFAULT 0,
+  total_pull_requests_merged INTEGER NOT NULL DEFAULT 0,
+  total_issues INTEGER NOT NULL DEFAULT 0,
+  total_lines_added INTEGER NOT NULL DEFAULT 0,
+  total_lines_removed INTEGER NOT NULL DEFAULT 0,
+  unique_contributors INTEGER NOT NULL DEFAULT 0,
+  last_activity DATE,
+  status VARCHAR(50) NOT NULL DEFAULT 'active',
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  UNIQUE(org_id, repo_id, period)
+);
+
+CREATE INDEX IF NOT EXISTS idx_repo_aggregated_org_period ON repo_aggregated_stats(org_id, period);
+CREATE INDEX IF NOT EXISTS idx_repo_aggregated_activity ON repo_aggregated_stats(last_activity DESC);
+
 -- Streaks table
 CREATE TABLE IF NOT EXISTS streaks (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -201,6 +264,21 @@ DROP TRIGGER IF EXISTS update_aggregated_stats_updated_at ON aggregated_stats;
 CREATE TRIGGER update_aggregated_stats_updated_at
     BEFORE UPDATE ON aggregated_stats
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_repositories_updated_at ON repositories;
+CREATE TRIGGER update_repositories_updated_at
+  BEFORE UPDATE ON repositories
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_repo_daily_contributions_updated_at ON repo_daily_contributions;
+CREATE TRIGGER update_repo_daily_contributions_updated_at
+  BEFORE UPDATE ON repo_daily_contributions
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_repo_aggregated_stats_updated_at ON repo_aggregated_stats;
+CREATE TRIGGER update_repo_aggregated_stats_updated_at
+  BEFORE UPDATE ON repo_aggregated_stats
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 DROP TRIGGER IF EXISTS update_streaks_updated_at ON streaks;
 CREATE TRIGGER update_streaks_updated_at

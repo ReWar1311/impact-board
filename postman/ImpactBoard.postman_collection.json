@@ -1,0 +1,1007 @@
+{
+	"info": {
+		"_postman_id": "impactboard-api-v1",
+		"name": "ImpactBoard GitHub App API",
+		"description": "Complete API collection for the ImpactBoard GitHub App.\n\nImpactBoard is a GitHub App that provides contribution analytics, leaderboards, and README automation for organizations.\n\n## Authentication\n\n- **Webhooks**: Authenticated via GitHub webhook signature (HMAC SHA-256)\n- **Public Endpoints**: Rate-limited but no authentication required\n- **README API**: Rate-limited by organization\n\n## Base URL\n\nSet the `{{baseUrl}}` variable to your deployment URL (e.g., `http://localhost:3000` for local development).\n\n## Rate Limits\n\n| Endpoint Category | Limit |\n|-------------------|-------|\n| Public Badges | 100 requests/15 min |\n| Webhooks | 100 requests/15 min |\n| README Update | 10 requests/hour/org |",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "impactboard"
+	},
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:3000",
+			"type": "string",
+			"description": "Base URL of the ImpactBoard API server"
+		},
+		{
+			"key": "installationId",
+			"value": "12345678",
+			"type": "string",
+			"description": "GitHub App installation ID"
+		},
+		{
+			"key": "orgLogin",
+			"value": "my-org",
+			"type": "string",
+			"description": "GitHub organization login/username"
+		},
+		{
+			"key": "username",
+			"value": "octocat",
+			"type": "string",
+			"description": "GitHub username for contributor endpoints"
+		},
+		{
+			"key": "userId",
+			"value": "1234567",
+			"type": "string",
+			"description": "GitHub user ID for privacy endpoints"
+		},
+		{
+			"key": "webhookSecret",
+			"value": "your-webhook-secret",
+			"type": "string",
+			"description": "GitHub webhook secret for signature verification"
+		}
+	],
+	"item": [
+		{
+			"name": "Health & Status",
+			"description": "Health check and readiness endpoints for monitoring and orchestration.",
+			"item": [
+				{
+					"name": "Health Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/health",
+							"host": ["{{baseUrl}}"],
+							"path": ["health"]
+						},
+						"description": "Basic health check endpoint. Returns 200 if the server is running.\n\n**Use Cases:**\n- Load balancer health checks\n- Container orchestration (Docker, Kubernetes)\n- Uptime monitoring"
+					},
+					"response": [
+						{
+							"name": "Healthy",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/health",
+									"host": ["{{baseUrl}}"],
+									"path": ["health"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"status\": \"healthy\",\n  \"timestamp\": \"2025-12-24T10:00:00.000Z\",\n  \"version\": \"1.0.0\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Readiness Check",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/ready",
+							"host": ["{{baseUrl}}"],
+							"path": ["ready"]
+						},
+						"description": "Readiness check endpoint that verifies database connectivity.\n\n**Use Cases:**\n- Kubernetes readiness probes\n- Deployment verification\n- Database connection monitoring\n\n**Returns:**\n- 200: Server is ready and database is connected\n- 503: Server is not ready (database disconnected)"
+					},
+					"response": [
+						{
+							"name": "Ready",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/ready",
+									"host": ["{{baseUrl}}"],
+									"path": ["ready"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"status\": \"ready\",\n  \"timestamp\": \"2025-12-24T10:00:00.000Z\",\n  \"database\": \"connected\"\n}"
+						},
+						{
+							"name": "Not Ready",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/ready",
+									"host": ["{{baseUrl}}"],
+									"path": ["ready"]
+								}
+							},
+							"status": "Service Unavailable",
+							"code": 503,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"status\": \"not ready\",\n  \"timestamp\": \"2025-12-24T10:00:00.000Z\",\n  \"database\": \"disconnected\"\n}"
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "Webhooks",
+			"description": "GitHub webhook endpoints for receiving events from GitHub.",
+			"item": [
+				{
+					"name": "GitHub Webhook",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"// Generate HMAC SHA-256 signature for webhook payload",
+									"const crypto = require('crypto-js');",
+									"",
+									"const payload = pm.request.body.raw;",
+									"const secret = pm.variables.get('webhookSecret');",
+									"",
+									"if (payload && secret) {",
+									"    const signature = 'sha256=' + CryptoJS.HmacSHA256(payload, secret).toString();",
+									"    pm.request.headers.add({",
+									"        key: 'X-Hub-Signature-256',",
+									"        value: signature",
+									"    });",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-GitHub-Event",
+								"value": "push",
+								"description": "Event type: push, pull_request, issues, installation, etc."
+							},
+							{
+								"key": "X-GitHub-Delivery",
+								"value": "{{$guid}}",
+								"description": "Unique delivery ID for idempotency"
+							},
+							{
+								"key": "X-Hub-Signature-256",
+								"value": "sha256=<computed>",
+								"description": "HMAC SHA-256 signature (auto-generated in pre-request script)"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"ref\": \"refs/heads/main\",\n  \"before\": \"0000000000000000000000000000000000000000\",\n  \"after\": \"abc123def456\",\n  \"repository\": {\n    \"id\": 123456789,\n    \"name\": \"my-repo\",\n    \"full_name\": \"my-org/my-repo\",\n    \"owner\": {\n      \"id\": 987654321,\n      \"login\": \"my-org\",\n      \"type\": \"Organization\"\n    },\n    \"private\": false,\n    \"default_branch\": \"main\"\n  },\n  \"organization\": {\n    \"id\": 987654321,\n    \"login\": \"my-org\"\n  },\n  \"sender\": {\n    \"id\": 1234567,\n    \"login\": \"octocat\",\n    \"type\": \"User\"\n  },\n  \"installation\": {\n    \"id\": 12345678\n  },\n  \"commits\": [\n    {\n      \"id\": \"abc123def456\",\n      \"message\": \"feat: add new feature\",\n      \"author\": {\n        \"name\": \"Octocat\",\n        \"email\": \"octocat@github.com\",\n        \"username\": \"octocat\"\n      },\n      \"timestamp\": \"2025-12-24T10:00:00Z\",\n      \"added\": [\"src/newfile.ts\"],\n      \"removed\": [],\n      \"modified\": [\"README.md\"]\n    }\n  ],\n  \"head_commit\": {\n    \"id\": \"abc123def456\",\n    \"message\": \"feat: add new feature\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/webhook",
+							"host": ["{{baseUrl}}"],
+							"path": ["webhook"]
+						},
+						"description": "Main GitHub webhook endpoint for receiving events.\n\n**Supported Events:**\n- `installation` - App installed/uninstalled\n- `installation_repositories` - Repos added/removed\n- `push` - Code pushed to repository\n- `pull_request` - PR opened/closed/merged\n- `issues` - Issue opened/closed\n\n**Authentication:**\nWebhook signature verification using HMAC SHA-256.\n\n**Headers Required:**\n- `X-GitHub-Event`: Event type\n- `X-GitHub-Delivery`: Unique delivery ID\n- `X-Hub-Signature-256`: HMAC signature"
+					},
+					"response": [
+						{
+							"name": "Webhook Accepted",
+							"originalRequest": {
+								"method": "POST",
+								"url": {
+									"raw": "{{baseUrl}}/webhook",
+									"host": ["{{baseUrl}}"],
+									"path": ["webhook"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"status\": \"processed\",\n  \"eventId\": \"abc123-def456-ghi789\"\n}"
+						},
+						{
+							"name": "Invalid Signature",
+							"originalRequest": {
+								"method": "POST",
+								"url": {
+									"raw": "{{baseUrl}}/webhook",
+									"host": ["{{baseUrl}}"],
+									"path": ["webhook"]
+								}
+							},
+							"status": "Unauthorized",
+							"code": 401,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"error\": \"Invalid webhook signature\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Webhook - Pull Request Event",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-GitHub-Event",
+								"value": "pull_request"
+							},
+							{
+								"key": "X-GitHub-Delivery",
+								"value": "{{$guid}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"action\": \"closed\",\n  \"number\": 42,\n  \"pull_request\": {\n    \"id\": 123456789,\n    \"number\": 42,\n    \"title\": \"feat: implement new feature\",\n    \"state\": \"closed\",\n    \"merged\": true,\n    \"merged_at\": \"2025-12-24T10:00:00Z\",\n    \"user\": {\n      \"id\": 1234567,\n      \"login\": \"octocat\",\n      \"type\": \"User\"\n    },\n    \"additions\": 150,\n    \"deletions\": 25,\n    \"changed_files\": 5\n  },\n  \"repository\": {\n    \"id\": 123456789,\n    \"name\": \"my-repo\",\n    \"full_name\": \"my-org/my-repo\",\n    \"owner\": {\n      \"id\": 987654321,\n      \"login\": \"my-org\",\n      \"type\": \"Organization\"\n    }\n  },\n  \"organization\": {\n    \"id\": 987654321,\n    \"login\": \"my-org\"\n  },\n  \"sender\": {\n    \"id\": 1234567,\n    \"login\": \"octocat\"\n  },\n  \"installation\": {\n    \"id\": 12345678\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/webhook",
+							"host": ["{{baseUrl}}"],
+							"path": ["webhook"]
+						},
+						"description": "Example pull request webhook event (merged PR)."
+					},
+					"response": []
+				},
+				{
+					"name": "Webhook - Installation Event",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-GitHub-Event",
+								"value": "installation"
+							},
+							{
+								"key": "X-GitHub-Delivery",
+								"value": "{{$guid}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"action\": \"created\",\n  \"installation\": {\n    \"id\": 12345678,\n    \"account\": {\n      \"id\": 987654321,\n      \"login\": \"my-org\",\n      \"type\": \"Organization\",\n      \"avatar_url\": \"https://avatars.githubusercontent.com/u/987654321\"\n    },\n    \"app_id\": 123456,\n    \"target_type\": \"Organization\",\n    \"permissions\": {\n      \"contents\": \"read\",\n      \"metadata\": \"read\",\n      \"pull_requests\": \"read\",\n      \"issues\": \"read\"\n    },\n    \"events\": [\"push\", \"pull_request\", \"issues\"],\n    \"created_at\": \"2025-12-24T10:00:00Z\",\n    \"updated_at\": \"2025-12-24T10:00:00Z\"\n  },\n  \"repositories\": [\n    {\n      \"id\": 123456789,\n      \"name\": \"my-repo\",\n      \"full_name\": \"my-org/my-repo\",\n      \"private\": false\n    }\n  ],\n  \"sender\": {\n    \"id\": 1234567,\n    \"login\": \"admin-user\"\n  }\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/webhook",
+							"host": ["{{baseUrl}}"],
+							"path": ["webhook"]
+						},
+						"description": "Example installation webhook event (app installed)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "SVG Badges",
+			"description": "Public endpoints for generating SVG badges and visualizations.\n\nAll badge endpoints:\n- Return `image/svg+xml` content type\n- Are cached for 30 minutes\n- Respect user privacy settings",
+			"item": [
+				{
+					"name": "Leaderboard Badge",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "image/svg+xml"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/badge/leaderboard/{{installationId}}?compact=false&limit=10",
+							"host": ["{{baseUrl}}"],
+							"path": ["badge", "leaderboard", "{{installationId}}"],
+							"query": [
+								{
+									"key": "compact",
+									"value": "false",
+									"description": "Use compact layout (true/false)"
+								},
+								{
+									"key": "limit",
+									"value": "10",
+									"description": "Number of entries to show (max: 25)"
+								}
+							]
+						},
+						"description": "Generate an SVG leaderboard showing top contributors.\n\n**Query Parameters:**\n- `compact`: Use compact layout (default: false)\n- `limit`: Number of entries (1-25, default: 10)\n\n**Response:**\nSVG image showing ranked contributors with:\n- Rank number and badge\n- Username\n- Score visualization\n- Contributor tier (Bronze/Silver/Gold/Diamond)"
+					},
+					"response": [
+						{
+							"name": "Leaderboard SVG",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/badge/leaderboard/{{installationId}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["badge", "leaderboard", "{{installationId}}"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "xml",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "image/svg+xml"
+								},
+								{
+									"key": "Cache-Control",
+									"value": "public, max-age=1800"
+								}
+							],
+							"body": "<svg><!-- Leaderboard SVG content --></svg>"
+						},
+						{
+							"name": "Installation Not Found",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/badge/leaderboard/999999999",
+									"host": ["{{baseUrl}}"],
+									"path": ["badge", "leaderboard", "999999999"]
+								}
+							},
+							"status": "Not Found",
+							"code": 404,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"error\": \"Installation not found\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Leaderboard Badge (Compact)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "image/svg+xml"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/badge/leaderboard/{{installationId}}?compact=true&limit=5",
+							"host": ["{{baseUrl}}"],
+							"path": ["badge", "leaderboard", "{{installationId}}"],
+							"query": [
+								{
+									"key": "compact",
+									"value": "true"
+								},
+								{
+									"key": "limit",
+									"value": "5"
+								}
+							]
+						},
+						"description": "Generate a compact leaderboard SVG (smaller, suitable for inline display)."
+					},
+					"response": []
+				},
+				{
+					"name": "Contributor Card Badge",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "image/svg+xml"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/badge/contributor/{{installationId}}/{{username}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["badge", "contributor", "{{installationId}}", "{{username}}"]
+						},
+						"description": "Generate an SVG card for a specific contributor.\n\n**Path Parameters:**\n- `installationId`: GitHub App installation ID\n- `username`: GitHub username\n\n**Response:**\nSVG card showing:\n- Username and avatar placeholder\n- Contributor rank/tier\n- Total score\n- Current streak\n- Commits, PRs, and issues count\n\n**Privacy:**\nReturns 403 if user has opted out of public display."
+					},
+					"response": [
+						{
+							"name": "Contributor Card",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/badge/contributor/{{installationId}}/{{username}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["badge", "contributor", "{{installationId}}", "{{username}}"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "xml",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "image/svg+xml"
+								},
+								{
+									"key": "Cache-Control",
+									"value": "public, max-age=1800"
+								}
+							],
+							"body": "<svg><!-- Contributor card SVG --></svg>"
+						},
+						{
+							"name": "User Opted Out",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/badge/contributor/{{installationId}}/private-user",
+									"host": ["{{baseUrl}}"],
+									"path": ["badge", "contributor", "{{installationId}}", "private-user"]
+								}
+							},
+							"status": "Forbidden",
+							"code": 403,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"error\": \"User has opted out of public display\"\n}"
+						},
+						{
+							"name": "User Not Found",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/badge/contributor/{{installationId}}/nonexistent-user",
+									"host": ["{{baseUrl}}"],
+									"path": ["badge", "contributor", "{{installationId}}", "nonexistent-user"]
+								}
+							},
+							"status": "Not Found",
+							"code": 404,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"error\": \"User not found\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Contribution Heatmap",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "image/svg+xml"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/badge/heatmap/{{installationId}}/{{username}}?mini=false",
+							"host": ["{{baseUrl}}"],
+							"path": ["badge", "heatmap", "{{installationId}}", "{{username}}"],
+							"query": [
+								{
+									"key": "mini",
+									"value": "false",
+									"description": "Use mini layout (30 days instead of 365)"
+								}
+							]
+						},
+						"description": "Generate a GitHub-style contribution heatmap SVG.\n\n**Query Parameters:**\n- `mini`: Use mini layout showing last 30 days (default: false = 365 days)\n\n**Response:**\nSVG heatmap showing:\n- Day-by-day contribution activity\n- Color intensity based on contribution count\n- Day and month labels\n- Legend showing intensity scale\n\n**Privacy:**\nReturns 403 if user has opted out of public display."
+					},
+					"response": [
+						{
+							"name": "Full Heatmap (365 days)",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/badge/heatmap/{{installationId}}/{{username}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["badge", "heatmap", "{{installationId}}", "{{username}}"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "xml",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "image/svg+xml"
+								}
+							],
+							"body": "<svg><!-- Heatmap SVG --></svg>"
+						}
+					]
+				},
+				{
+					"name": "Contribution Heatmap (Mini)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "image/svg+xml"
+							}
+						],
+						"url": {
+							"raw": "{{baseUrl}}/badge/heatmap/{{installationId}}/{{username}}?mini=true",
+							"host": ["{{baseUrl}}"],
+							"path": ["badge", "heatmap", "{{installationId}}", "{{username}}"],
+							"query": [
+								{
+									"key": "mini",
+									"value": "true"
+								}
+							]
+						},
+						"description": "Generate a mini heatmap showing only the last 30 days of activity."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Privacy",
+			"description": "Endpoints for managing user privacy settings.\n\nUsers can opt out of public display and control which stats are visible.",
+			"item": [
+				{
+					"name": "Update Privacy Settings",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"installationId\": {{installationId}},\n  \"userId\": {{userId}},\n  \"optedOut\": false,\n  \"showDetailedStats\": true,\n  \"showOnLeaderboard\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/privacy/opt-out",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "opt-out"]
+						},
+						"description": "Update privacy settings for a user.\n\n**Request Body:**\n- `installationId` (required): GitHub App installation ID\n- `userId` (required): GitHub user ID\n- `optedOut`: Completely opt out of tracking (default: false)\n- `showDetailedStats`: Show detailed contribution stats (default: true)\n- `showOnLeaderboard`: Appear on public leaderboards (default: true)\n\n**Note:** In production, this endpoint should verify user identity via OAuth."
+					},
+					"response": [
+						{
+							"name": "Settings Updated",
+							"originalRequest": {
+								"method": "POST",
+								"url": {
+									"raw": "{{baseUrl}}/privacy/opt-out",
+									"host": ["{{baseUrl}}"],
+									"path": ["privacy", "opt-out"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"status\": \"updated\"\n}"
+						},
+						{
+							"name": "Missing Fields",
+							"originalRequest": {
+								"method": "POST",
+								"url": {
+									"raw": "{{baseUrl}}/privacy/opt-out",
+									"host": ["{{baseUrl}}"],
+									"path": ["privacy", "opt-out"]
+								}
+							},
+							"status": "Bad Request",
+							"code": 400,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"error\": \"Missing required fields\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Opt Out Completely",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"installationId\": {{installationId}},\n  \"userId\": {{userId}},\n  \"optedOut\": true\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/privacy/opt-out",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "opt-out"]
+						},
+						"description": "Completely opt out of all public tracking and display."
+					},
+					"response": []
+				},
+				{
+					"name": "Hide From Leaderboard Only",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"installationId\": {{installationId}},\n  \"userId\": {{userId}},\n  \"optedOut\": false,\n  \"showDetailedStats\": true,\n  \"showOnLeaderboard\": false\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/privacy/opt-out",
+							"host": ["{{baseUrl}}"],
+							"path": ["privacy", "opt-out"]
+						},
+						"description": "Continue tracking but hide from public leaderboard."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "README Management",
+			"description": "Endpoints for managing organization README updates.\n\nThese endpoints allow organizations to:\n- Trigger manual README updates\n- Check README update status\n- Validate impactboard.yml configuration",
+			"item": [
+				{
+					"name": "Trigger README Update",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"apiKey\": \"optional-api-key\"\n}"
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/readme/update/{{orgLogin}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "readme", "update", "{{orgLogin}}"]
+						},
+						"description": "Manually trigger a README update for an organization.\n\n**Path Parameters:**\n- `orgLogin`: GitHub organization login/username\n\n**Rate Limit:** 10 requests per hour per organization\n\n**Prerequisites:**\n- ImpactBoard app must be installed on the organization\n- README updates must be enabled in organization settings\n\n**Response:**\n- 200: README updated successfully\n- 403: README updates disabled\n- 404: Organization not found\n- 429: Rate limit exceeded\n- 500: Update failed"
+					},
+					"response": [
+						{
+							"name": "README Updated",
+							"originalRequest": {
+								"method": "POST",
+								"url": {
+									"raw": "{{baseUrl}}/api/readme/update/{{orgLogin}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "readme", "update", "{{orgLogin}}"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"status\": \"success\",\n  \"message\": \"README updated successfully for my-org\",\n  \"timestamp\": \"2025-12-24T10:00:00.000Z\"\n}"
+						},
+						{
+							"name": "Organization Not Found",
+							"originalRequest": {
+								"method": "POST",
+								"url": {
+									"raw": "{{baseUrl}}/api/readme/update/nonexistent-org",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "readme", "update", "nonexistent-org"]
+								}
+							},
+							"status": "Not Found",
+							"code": 404,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"error\": \"Organization not found. Make sure the app is installed.\"\n}"
+						},
+						{
+							"name": "README Updates Disabled",
+							"originalRequest": {
+								"method": "POST",
+								"url": {
+									"raw": "{{baseUrl}}/api/readme/update/{{orgLogin}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "readme", "update", "{{orgLogin}}"]
+								}
+							},
+							"status": "Forbidden",
+							"code": 403,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"error\": \"README updates are disabled for this organization.\"\n}"
+						},
+						{
+							"name": "Rate Limit Exceeded",
+							"originalRequest": {
+								"method": "POST",
+								"url": {
+									"raw": "{{baseUrl}}/api/readme/update/{{orgLogin}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "readme", "update", "{{orgLogin}}"]
+								}
+							},
+							"status": "Too Many Requests",
+							"code": 429,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								},
+								{
+									"key": "Retry-After",
+									"value": "3600"
+								}
+							],
+							"body": "{\n  \"error\": \"Too many README update requests. Please wait before trying again.\"\n}"
+						},
+						{
+							"name": "Update Failed",
+							"originalRequest": {
+								"method": "POST",
+								"url": {
+									"raw": "{{baseUrl}}/api/readme/update/{{orgLogin}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "readme", "update", "{{orgLogin}}"]
+								}
+							},
+							"status": "Internal Server Error",
+							"code": 500,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"status\": \"failed\",\n  \"message\": \"Failed to update README. Check logs for details.\",\n  \"timestamp\": \"2025-12-24T10:00:00.000Z\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Get README Status",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/readme/status/{{orgLogin}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "readme", "status", "{{orgLogin}}"]
+						},
+						"description": "Get the README update status for an organization.\n\n**Path Parameters:**\n- `orgLogin`: GitHub organization login/username\n\n**Response:**\n- Organization name and installation ID\n- Whether README updates are enabled\n- Update schedule (hourly, daily, etc.)\n- Last update timestamp"
+					},
+					"response": [
+						{
+							"name": "Status Response",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/api/readme/status/{{orgLogin}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "readme", "status", "{{orgLogin}}"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"orgLogin\": \"my-org\",\n  \"installationId\": 12345678,\n  \"readmeUpdatesEnabled\": true,\n  \"updateSchedule\": \"hourly\",\n  \"lastUpdated\": \"2025-12-24T09:00:00.000Z\"\n}"
+						},
+						{
+							"name": "Organization Not Found",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/api/readme/status/nonexistent-org",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "readme", "status", "nonexistent-org"]
+								}
+							},
+							"status": "Not Found",
+							"code": 404,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"error\": \"Organization not found\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Validate YAML Config",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": {
+							"raw": "{{baseUrl}}/api/readme/validate/{{orgLogin}}",
+							"host": ["{{baseUrl}}"],
+							"path": ["api", "readme", "validate", "{{orgLogin}}"]
+						},
+						"description": "Validate the impactboard.yml configuration file for an organization.\n\n**Path Parameters:**\n- `orgLogin`: GitHub organization login/username\n\n**What it validates:**\n- YAML syntax is correct\n- Required fields are present (`version: v1`, `mode`)\n- Field values are valid (mode must be 'full', 'assets-only', or 'template')\n- Nested object structures match schema\n\n**Response:**\n- `valid: true` with parsed config on success\n- `valid: false` with detailed error messages on failure"
+					},
+					"response": [
+						{
+							"name": "Valid Configuration",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/api/readme/validate/{{orgLogin}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "readme", "validate", "{{orgLogin}}"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"valid\": true,\n  \"message\": \"impactboard.yml is valid\",\n  \"config\": {\n    \"version\": \"v1\",\n    \"mode\": \"full\",\n    \"fail_on_invalid_config\": false,\n    \"readme\": {\n      \"file\": \".github/profile/README.md\",\n      \"placeholder\": \".github/profile/README_TEMPLATE.md\",\n      \"allow\": {\n        \"entities\": [\"USER\", \"REPO\", \"ORG\"],\n        \"max_placeholders\": 100,\n        \"user_selectors\": {\n          \"top_max\": 25,\n          \"allow_username_lookup\": true\n        }\n      }\n    },\n    \"assets\": {\n      \"base_path\": \"assets/impactboard\"\n    }\n  }\n}"
+						},
+						{
+							"name": "Invalid Configuration",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/api/readme/validate/{{orgLogin}}",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "readme", "validate", "{{orgLogin}}"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"valid\": false,\n  \"message\": \"impactboard.yml has validation errors\",\n  \"errors\": [\n    {\n      \"path\": \"mode\",\n      \"message\": \"Invalid enum value. Expected 'full' | 'assets-only' | 'template', received 'invalid'\"\n    },\n    {\n      \"path\": \"readme.allow.max_placeholders\",\n      \"message\": \"Number must be greater than or equal to 1\"\n    }\n  ],\n  \"rawYaml\": \"version: v1\\nmode: invalid\\nreadme:\\n  allow:\\n    max_placeholders: -5\",\n  \"hint\": \"Check the schema requirements. Required fields: version (must be 'v1'), mode (must be 'full', 'assets-only', or 'template')\"\n}"
+						},
+						{
+							"name": "Organization Not Found",
+							"originalRequest": {
+								"method": "GET",
+								"url": {
+									"raw": "{{baseUrl}}/api/readme/validate/nonexistent-org",
+									"host": ["{{baseUrl}}"],
+									"path": ["api", "readme", "validate", "nonexistent-org"]
+								}
+							},
+							"status": "Not Found",
+							"code": 404,
+							"_postman_previewlanguage": "json",
+							"header": [
+								{
+									"key": "Content-Type",
+									"value": "application/json"
+								}
+							],
+							"body": "{\n  \"error\": \"Organization not found. Make sure the app is installed.\"\n}"
+						}
+					]
+				}
+			]
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global pre-request script",
+					"// You can add common setup here"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global test script",
+					"// Common assertions can go here"
+				]
+			}
+		}
+	]
+}

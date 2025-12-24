@@ -265,7 +265,7 @@ class ReadmePublisher {
           path: placeholderTemplate.split('/').slice(1).join('/'),
         });
         if ('content' in res.data) {
-          templateContent = await Buffer.from((res.data as any).content, 'base64').toString('utf8');
+          templateContent = Buffer.from((res.data as any).content, 'base64').toString('utf8');
         }
       } catch (err) {
         logger.error({ orgLogin, placeholderTemplate }, 'Could not fetch placeholder template file');
