@@ -14,19 +14,23 @@ async function upsertFile(
   orgLogin: string,
   filePath: string,
   content: string,
-  maxRetries = 3
+  maxRetries = 5
 ): Promise<string> {
   const octokit = await createOctokitClient(installationId);
   const owner = orgLogin;
   const repo = '.github';
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    // Get fresh SHA on each attempt
+    // Get fresh SHA on each attempt - always fetch right before update
     let sha: string | undefined;
     try {
       const existing = await octokit.repos.getContent({ owner, repo, path: filePath });
       if ('sha' in existing.data) sha = existing.data.sha as string;
-    } catch (_) {}
+    } catch (e: unknown) {
+      // File doesn't exist yet - that's fine, sha stays undefined for create
+      const is404 = e instanceof Error && 'status' in e && (e as { status: number }).status === 404;
+      if (!is404) throw e;
+    }
 
     try {
       await octokit.repos.createOrUpdateFileContents({
@@ -41,8 +45,10 @@ async function upsertFile(
     } catch (error: unknown) {
       const isConflict = error instanceof Error && 'status' in error && (error as { status: number }).status === 409;
       if (isConflict && attempt < maxRetries) {
-        // SHA conflict - wait briefly and retry with fresh SHA
-        await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
+        // SHA conflict - exponential backoff with jitter to avoid thundering herd
+        const baseDelay = 200 * Math.pow(2, attempt - 1); // 200ms, 400ms, 800ms, 1600ms
+        const jitter = Math.random() * 100;
+        await new Promise((resolve) => setTimeout(resolve, baseDelay + jitter));
         continue;
       }
       throw error;

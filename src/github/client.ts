@@ -198,48 +198,79 @@ export async function getProfileReadme(
 }
 
 /**
- * Update the profile README content
+ * Update the profile README content with retry logic for SHA conflicts
  */
 export async function updateProfileReadme(
   installationId: number,
   orgLogin: string,
   content: string,
-  sha?: string
+  sha?: string,
+  maxRetries = 5
 ): Promise<boolean> {
-  const startTime = Date.now();
   const octokit = await createOctokitClient(installationId);
-  
-  try {
-    // Ensure profile directory exists by creating the file
-    const requestBody: {
-      owner: string;
-      repo: string;
-      path: string;
-      message: string;
-      content: string;
-      sha?: string;
-    } = {
-      owner: orgLogin,
-      repo: PROFILE_REPO_NAME,
-      path: PROFILE_README_PATH,
-      message: '📊 Update contribution stats [impact-board-bot]',
-      content: Buffer.from(content).toString('base64'),
-    };
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const startTime = Date.now();
     
-    if (sha) {
-      requestBody.sha = sha;
+    // Get fresh SHA on each attempt if not provided or if retrying
+    let currentSha = sha;
+    if (attempt > 1 || !sha) {
+      try {
+        const existing = await octokit.repos.getContent({
+          owner: orgLogin,
+          repo: PROFILE_REPO_NAME,
+          path: PROFILE_README_PATH,
+        });
+        if ('sha' in existing.data) currentSha = existing.data.sha as string;
+      } catch (e: unknown) {
+        // File doesn't exist - that's fine, sha stays undefined for create
+        const is404 = e instanceof Error && 'status' in e && (e as { status: number }).status === 404;
+        if (!is404) throw e;
+        currentSha = undefined;
+      }
     }
     
-    await octokit.repos.createOrUpdateFileContents(requestBody);
-    
-    logGitHubApi('PUT', `/repos/${orgLogin}/${PROFILE_REPO_NAME}/contents/${PROFILE_README_PATH}`, installationId, Date.now() - startTime);
-    
-    logger.info({ orgLogin }, 'Updated profile README');
-    return true;
-  } catch (error) {
-    logger.error({ error, orgLogin }, 'Failed to update profile README');
-    return false;
+    try {
+      const requestBody: {
+        owner: string;
+        repo: string;
+        path: string;
+        message: string;
+        content: string;
+        sha?: string;
+      } = {
+        owner: orgLogin,
+        repo: PROFILE_REPO_NAME,
+        path: PROFILE_README_PATH,
+        message: '📊 Update contribution stats [impact-board-bot]',
+        content: Buffer.from(content).toString('base64'),
+      };
+      
+      if (currentSha) {
+        requestBody.sha = currentSha;
+      }
+      
+      await octokit.repos.createOrUpdateFileContents(requestBody);
+      
+      logGitHubApi('PUT', `/repos/${orgLogin}/${PROFILE_REPO_NAME}/contents/${PROFILE_README_PATH}`, installationId, Date.now() - startTime);
+      
+      logger.info({ orgLogin }, 'Updated profile README');
+      return true;
+    } catch (error: unknown) {
+      const isConflict = error instanceof Error && 'status' in error && (error as { status: number }).status === 409;
+      if (isConflict && attempt < maxRetries) {
+        // SHA conflict - exponential backoff with jitter
+        const baseDelay = 200 * Math.pow(2, attempt - 1);
+        const jitter = Math.random() * 100;
+        await new Promise((resolve) => setTimeout(resolve, baseDelay + jitter));
+        continue;
+      }
+      logger.error({ error, orgLogin, attempt }, 'Failed to update profile README');
+      return false;
+    }
   }
+  
+  return false;
 }
 
 /**

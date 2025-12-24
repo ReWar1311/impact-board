@@ -287,42 +287,59 @@ class ReadmePublisher {
   }
 
   /**
-   * Upsert README file in .github repo at specified path
+   * Upsert README file in .github repo at specified path with retry logic for SHA conflicts
    */
   private async upsertReadmeFile(
     installationId: number,
     orgLogin: string,
     filePath: string,
-    content: string
+    content: string,
+    maxRetries = 5
   ): Promise<boolean> {
-    try {
-      const octokit = await createOctokitClient(installationId);
-      const owner = orgLogin;
-      const repo = filePath.split('/')[0] || '.github';
-      const path = filePath.split('/').slice(1).join('/');
+    const octokit = await createOctokitClient(installationId);
+    const owner = orgLogin;
+    const repo = filePath.split('/')[0] || '.github';
+    const path = filePath.split('/').slice(1).join('/');
 
-      // Try to get existing file to retrieve sha
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      // Get fresh SHA on each attempt - always fetch right before update
       let sha: string | undefined;
       try {
         const existing = await octokit.repos.getContent({ owner, repo, path });
-        if ('sha' in existing.data) sha = (existing.data as any).sha;
-      } catch (_) {}
+        if ('sha' in existing.data) sha = (existing.data as { sha: string }).sha;
+      } catch (e: unknown) {
+        // File doesn't exist yet - that's fine, sha stays undefined for create
+        const is404 = e instanceof Error && 'status' in e && (e as { status: number }).status === 404;
+        if (!is404) throw e;
+      }
 
-      await octokit.repos.createOrUpdateFileContents({
-        owner,
-        repo,
-        path,
-        message: '📣 Update ImpactBoard README',
-        content: Buffer.from(content).toString('base64'),
-        sha,
-      });
+      try {
+        await octokit.repos.createOrUpdateFileContents({
+          owner,
+          repo,
+          path,
+          message: '📣 Update ImpactBoard README',
+          content: Buffer.from(content).toString('base64'),
+          sha,
+        });
 
-      logger.info({ orgLogin, filePath }, 'Successfully updated profile README');
-      return true;
-    } catch (error) {
-      logger.error({ error, orgLogin, filePath }, 'Failed to upsert README file');
-      return false;
+        logger.info({ orgLogin, filePath }, 'Successfully updated profile README');
+        return true;
+      } catch (error: unknown) {
+        const isConflict = error instanceof Error && 'status' in error && (error as { status: number }).status === 409;
+        if (isConflict && attempt < maxRetries) {
+          // SHA conflict - exponential backoff with jitter
+          const baseDelay = 200 * Math.pow(2, attempt - 1);
+          const jitter = Math.random() * 100;
+          await new Promise((resolve) => setTimeout(resolve, baseDelay + jitter));
+          continue;
+        }
+        logger.error({ error, orgLogin, filePath, attempt }, 'Failed to upsert README file');
+        return false;
+      }
     }
+
+    return false;
   }
 
   /**
